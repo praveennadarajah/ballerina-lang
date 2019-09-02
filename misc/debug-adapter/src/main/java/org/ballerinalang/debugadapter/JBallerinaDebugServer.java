@@ -227,7 +227,9 @@ public class JBallerinaDebugServer implements IDebugProtocolServer {
         nextVarReference.set(1);
         try {
             int debuggeePort = Integer.parseInt(args.get("debuggeePort").toString());
-            debuggee = new DebuggerAttachingVM(debuggeePort).initialize();
+            String debuggeeHost = args.get("debuggeeHost") == null ? "" : args.get("debuggeeHost").toString();
+
+            debuggee = new DebuggerAttachingVM(debuggeePort, debuggeeHost).initialize();
 
             EventRequestManager erm = debuggee.eventRequestManager();
             ClassPrepareRequest classPrepareRequest = erm.createClassPrepareRequest();
