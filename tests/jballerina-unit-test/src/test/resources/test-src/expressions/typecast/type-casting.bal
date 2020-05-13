@@ -489,17 +489,16 @@ function testJSONValueCasting() returns [string|error, int|error, float|error, b
     return [s, i, f, b];
 }
 
-function testAnyToTable() returns table<Employee>|error {
-    table<Employee> tb = table{};
-
-    Employee e1 = {id:1, name:"Jane"};
-    Employee e2 = {id:2, name:"Anne"};
-    checkpanic tb.add(e1);
-    checkpanic tb.add(e2);
+function testAnyToTable(){
+    table<Employee> tb = table [
+                    {id:1, name:"Jane"},
+                    {id:2, name:"Anne"}
+        ];
 
     any anyValue = tb;
-    var casted = check trap <table<Employee>> anyValue;
-    return casted;
+    var casted = <table<Employee>> anyValue;
+    table<Employee>|error  castedValue = casted;
+    assertEquality("id=1 name=Jane\nid=2 name=Anne", castedValue.toString());
 }
 
 type Employee record {
@@ -510,4 +509,20 @@ type Employee record {
 
 function testAnonRecordInCast() returns record {| string name; |} {
     return <record {| string name; |}>{ name: "Pubudu" };
+}
+
+type AssertionError error<ASSERTION_ERROR_REASON>;
+
+const ASSERTION_ERROR_REASON = "AssertionError";
+
+function assertEquality(any|error expected, any|error actual) {
+    if expected is anydata && actual is anydata && expected == actual {
+        return;
+    }
+
+    if expected === actual {
+        return;
+    }
+
+    panic AssertionError(message = "expected '" + expected.toString() + "', found '" + actual.toString () + "'");
 }

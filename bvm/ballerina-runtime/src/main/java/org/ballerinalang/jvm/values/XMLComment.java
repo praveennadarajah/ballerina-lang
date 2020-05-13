@@ -19,11 +19,12 @@ package org.ballerinalang.jvm.values;
 
 import org.apache.axiom.om.OMNode;
 import org.apache.axiom.om.impl.llom.OMCommentImpl;
-import org.ballerinalang.jvm.StringUtils;
 import org.ballerinalang.jvm.XMLNodeType;
 import org.ballerinalang.jvm.types.BType;
 import org.ballerinalang.jvm.types.BTypes;
-import org.ballerinalang.jvm.values.api.BString;
+
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * XML nodes containing comment data.
@@ -54,6 +55,14 @@ public class XMLComment extends XMLNonElementItem {
     }
 
     @Override
+    public Object copy(Map<Object, Object> refs) {
+        if (isFrozen()) {
+            return this;
+        }
+        return new XMLComment(data);
+    }
+
+    @Override
     public OMNode value() {
         OMCommentImpl omComment = new OMCommentImpl();
         omComment.setValue(this.data);
@@ -66,8 +75,8 @@ public class XMLComment extends XMLNonElementItem {
     }
 
     @Override
-    public BString bStringValue() {
-        return StringUtils.fromString(stringValue());
+    public int hashCode() {
+        return Objects.hash(data);
     }
 
     @Override

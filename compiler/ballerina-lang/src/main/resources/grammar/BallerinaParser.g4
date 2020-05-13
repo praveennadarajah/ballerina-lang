@@ -119,7 +119,8 @@ objectFieldDefinition
     ;
 
 fieldDefinition
-    :   documentationString? annotationAttachment* typeName Identifier QUESTION_MARK? (ASSIGN expression)? SEMICOLON
+    :   documentationString? annotationAttachment* TYPE_READONLY? typeName Identifier QUESTION_MARK?
+            (ASSIGN expression)? SEMICOLON
     ;
 
 recordRestFieldDefinition
@@ -218,6 +219,7 @@ typeName
     |   ((ABSTRACT? CLIENT?) | (CLIENT? ABSTRACT)) OBJECT LEFT_BRACE objectBody RIGHT_BRACE     # objectTypeNameLabel
     |   inclusiveRecordTypeDescriptor                                                           # inclusiveRecordTypeNameLabel
     |   exclusiveRecordTypeDescriptor                                                           # exclusiveRecordTypeNameLabel
+    |   tableTypeDescriptor                                                                     # tableTypeNameLabel
     ;
 
 inclusiveRecordTypeDescriptor
@@ -246,6 +248,7 @@ simpleTypeName
     :   TYPE_ANY
     |   TYPE_ANYDATA
     |   TYPE_HANDLE
+    |   TYPE_READONLY
     |   valueTypeName
     |   referenceTypeName
     |   nilLiteral
@@ -274,7 +277,6 @@ builtInReferenceTypeName
     |   TYPE_FUTURE LT typeName GT
     |   TYPE_XML (LT typeName GT)?
     |   TYPE_JSON
-    |   TYPE_TABLE LT typeName GT
     |   TYPE_DESC LT typeName GT
     |   SERVICE
     |   errorTypeName
@@ -284,6 +286,30 @@ builtInReferenceTypeName
 
 streamTypeName
     :   TYPE_STREAM (LT typeName (COMMA typeName)? GT)?
+    ;
+
+tableConstructorExpr
+    :   TYPE_TABLE tableKeySpecifier? LEFT_BRACKET tableRowList? RIGHT_BRACKET
+    ;
+
+tableRowList
+    :   recordLiteral (COMMA recordLiteral)*
+    ;
+
+tableTypeDescriptor
+    :   TYPE_TABLE LT typeName GT tableKeyConstraint?
+    ;
+
+tableKeyConstraint
+    :   tableKeySpecifier | tableKeyTypeConstraint
+    ;
+
+tableKeySpecifier
+    :   KEY LEFT_PARENTHESIS (Identifier (COMMA Identifier)*)? RIGHT_PARENTHESIS
+    ;
+
+tableKeyTypeConstraint
+    :   KEY LT typeName GT
     ;
 
 functionTypeName
@@ -354,8 +380,8 @@ staticMatchLiterals
     ;
 
 recordField
-    :   Identifier
-    |   recordKey COLON expression
+    :   TYPE_READONLY? Identifier
+    |   TYPE_READONLY? recordKey COLON expression
     |   ELLIPSIS expression
     ;
 
@@ -363,31 +389,6 @@ recordKey
     :   Identifier
     |   LEFT_BRACKET expression RIGHT_BRACKET
     |   expression
-    ;
-
-tableLiteral
-    :   TYPE_TABLE LEFT_BRACE tableColumnDefinition? (COMMA tableDataArray)? RIGHT_BRACE
-    ;
-
-tableColumnDefinition
-    :   LEFT_BRACE (tableColumn (COMMA tableColumn)*)? RIGHT_BRACE
-    ;
-
-tableColumn
-    :   Identifier? Identifier
-    ;
-
-tableDataArray
-    :   LEFT_BRACKET tableDataList? RIGHT_BRACKET
-    ;
-
-tableDataList
-    :   tableData (COMMA tableData)*
-    |   expressionList
-    ;
-
-tableData
-    :   LEFT_BRACE expressionList RIGHT_BRACE
     ;
 
 listConstructorExpr
@@ -708,7 +709,11 @@ xmlElementAccessFilter
     ;
 
 index
-    :   LEFT_BRACKET expression RIGHT_BRACKET
+    :   LEFT_BRACKET (expression | multiKeyIndex) RIGHT_BRACKET
+    ;
+
+multiKeyIndex
+    :   expression (COMMA expression)+
     ;
 
 xmlAttrib
@@ -805,8 +810,8 @@ expression
     :   simpleLiteral                                                       # simpleLiteralExpression
     |   listConstructorExpr                                                 # listConstructorExpression
     |   recordLiteral                                                       # recordLiteralExpression
+    |   tableConstructorExpr                                                # tableConstructorExpression
     |   xmlLiteral                                                          # xmlLiteralExpression
-    |   tableLiteral                                                        # tableLiteralExpression
     |   stringTemplateLiteral                                               # stringTemplateLiteralExpression
     |   (annotationAttachment* START)? variableReference                    # variableReferenceExpression
     |   actionInvocation                                                    # actionInvocationExpression
@@ -966,8 +971,8 @@ formalParameterList
     ;
 
 simpleLiteral
-    :   SUB? integerLiteral
-    |   SUB? floatingPointLiteral
+    :   (ADD | SUB)? integerLiteral
+    |   (ADD | SUB)? floatingPointLiteral
     |   QuotedStringLiteral
     |   BooleanLiteral
     |   nilLiteral
@@ -1097,7 +1102,7 @@ reservedWord
 
 // Markdown documentation
 documentationString
-    :   documentationLine+ parameterDocumentationLine* returnParameterDocumentationLine? deprecatedAnnotationDocumentationLine?
+    :   documentationLine+ parameterDocumentationLine* returnParameterDocumentationLine? deprecatedParametersDocumentationLine? deprecatedAnnotationDocumentationLine?
     ;
 
 documentationLine
@@ -1114,6 +1119,10 @@ returnParameterDocumentationLine
 
 deprecatedAnnotationDocumentationLine
     :   deprecatedAnnotationDocumentation deprecateAnnotationDescriptionLine*
+    ;
+
+deprecatedParametersDocumentationLine
+    :   deprecatedParametersDocumentation parameterDocumentationLine+
     ;
 
 documentationContent
@@ -1162,6 +1171,10 @@ returnParameterDocumentation
 
 deprecatedAnnotationDocumentation
     :   DeprecatedDocumentation
+    ;
+
+deprecatedParametersDocumentation
+    :   DeprecatedParametersDocumentation
     ;
 
 docParameterName
@@ -1226,13 +1239,14 @@ documentationIdentifier
     |   TYPE_MAP
     |   TYPE_JSON
     |   TYPE_XML
-    |   TYPE_TABLE
     |   TYPE_STREAM
+    |   TYPE_TABLE
     |   TYPE_ANY
     |   TYPE_DESC
     |   TYPE_FUTURE
     |   TYPE_ANYDATA
     |   TYPE_HANDLE
+    |   TYPE_READONLY
     ;
 
 braket

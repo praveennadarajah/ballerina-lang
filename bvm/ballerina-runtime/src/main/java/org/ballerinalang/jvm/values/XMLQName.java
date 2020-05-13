@@ -17,13 +17,13 @@
 */
 package org.ballerinalang.jvm.values;
 
-import org.ballerinalang.jvm.StringUtils;
 import org.ballerinalang.jvm.types.BType;
 import org.ballerinalang.jvm.types.BTypes;
 import org.ballerinalang.jvm.values.api.BString;
 import org.ballerinalang.jvm.values.api.BXMLQName;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * <p>
@@ -94,22 +94,22 @@ public final class XMLQName implements RefValue, BXMLQName {
     }
 
     @Override
-    public BString bStringValue() {
-        return StringUtils.fromString(stringValue());
-    }
-
-    @Override
     public BType getType() {
         return BTypes.typeXMLAttributes;
     }
 
     @Override
     public boolean equals(Object obj) {
-        if (obj == null || !(obj instanceof XMLQName)) {
+        if (!(obj instanceof XMLQName)) {
             return false;
         }
 
         return obj.toString().equals(localName);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(localName, uri);
     }
 
     @Override

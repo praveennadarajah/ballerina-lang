@@ -25,6 +25,8 @@ import org.testng.annotations.Test;
 /**
  * Test BString support in Object.
  */
+
+@Test(groups = "brokenOnJBallerina")
 public class BStringTableValueTest extends BStringTestCommons {
 
     @BeforeClass

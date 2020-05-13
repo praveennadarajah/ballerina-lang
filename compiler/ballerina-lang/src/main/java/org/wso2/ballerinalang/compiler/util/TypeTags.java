@@ -60,9 +60,10 @@ public class TypeTags {
     public static final int BYTE_ARRAY = OBJECT + 1;
     public static final int FUNCTION_POINTER = BYTE_ARRAY + 1;
     public static final int HANDLE = FUNCTION_POINTER + 1;
+    public static final int READONLY = HANDLE + 1;
 
     // Subtypes
-    public static final int SIGNED32_INT = HANDLE + 1;
+    public static final int SIGNED32_INT = READONLY + 1;
     public static final int SIGNED16_INT = SIGNED32_INT + 1;
     public static final int SIGNED8_INT = SIGNED16_INT + 1;
     public static final int UNSIGNED32_INT = SIGNED8_INT + 1;
@@ -73,6 +74,8 @@ public class TypeTags {
     public static final int XML_PI = XML_ELEMENT + 1;
     public static final int XML_COMMENT = XML_PI + 1;
     public static final int XML_TEXT = XML_COMMENT + 1;
+
+    public static final int NULL_SET = XML_TEXT + 1;
 
     private TypeTags() {
 
@@ -109,6 +112,17 @@ public class TypeTags {
     public static boolean isXMLTypeTag(int tag) {
         switch (tag) {
             case XML:
+            case XML_ELEMENT:
+            case XML_PI:
+            case XML_COMMENT:
+            case XML_TEXT:
+                return true;
+        }
+        return false;
+    }
+
+    public static boolean isXMLNonSequenceType(int tag) {
+        switch (tag) {
             case XML_ELEMENT:
             case XML_PI:
             case XML_COMMENT:

@@ -29,6 +29,7 @@ import org.ballerinalang.test.util.BRunUtil;
 import org.ballerinalang.test.util.CompileResult;
 import org.ballerinalang.test.utils.ByteArrayUtils;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.testng.Assert.assertEquals;
@@ -41,6 +42,14 @@ import static org.testng.Assert.assertTrue;
  * @since 0.961.0
  */
 public class LocksInMainTest {
+
+    private  CompileResult parallelCompileResult;
+
+    @BeforeClass
+    public void setup() {
+        parallelCompileResult = BCompileUtil.compile("test-src/lock/parallel-run-lock.bal");
+        Assert.assertEquals(parallelCompileResult.getErrorCount(), 0);
+    }
 
     @Test(description = "Tests lock within a lock")
     public void testLockWithinLock() {
@@ -56,7 +65,7 @@ public class LocksInMainTest {
 
     }
 
-    @Test(description = "Tests lock within in workers")
+    @Test(description = "Tests lock within in workers", enabled = false)
     public void simpleLock() {
         CompileResult compileResult = BCompileUtil.compile("test-src/lock/simple-lock.bal");
         BValue[] returns = BRunUtil.invoke(compileResult, "simpleLock");
@@ -103,7 +112,6 @@ public class LocksInMainTest {
 
         assertEquals(((BInteger) returns[0]).intValue(), 51);
         assertEquals(returns[1].stringValue(), "second worker string");
-
     }
 
     @Test(description = "Tests throwing an error inside a lock inside try catch block")
@@ -132,7 +140,7 @@ public class LocksInMainTest {
         assertEquals(returns[1].stringValue(), "worker 2 sets the string after try catch finally inside lock");
     }
 
-    @Test(description = "Tests throwing an error inside try finally block inside a lock")
+    @Test(description = "Tests throwing an error inside try finally block inside a lock", enabled = false)
     public void testThrowErrorInsideTryFinallyInsideLock() {
         CompileResult compileResult = BCompileUtil.compile("test-src/lock/locks-in-functions.bal");
 
@@ -171,7 +179,7 @@ public class LocksInMainTest {
         assertEquals(returns[1].stringValue(), "worker 2 sets the string after try catch inside lock");
     }
 
-    @Test(description = "Tests lock within lock in workers for boolean and blob", enabled = false)
+    @Test(description = "Tests lock within lock in workers for boolean and blob")
     public void testLockWithinLockInWorkersForBlobAndBoolean() {
         CompileResult compileResult = BCompileUtil.compile("test-src/lock/locks-in-functions.bal");
 
@@ -224,7 +232,7 @@ public class LocksInMainTest {
 
     }
 
-    @Test(description = "Tests next inside lock statement", enabled = false)
+    @Test(description = "Tests next inside lock statement")
     public void testNextInsideLock() {
         CompileResult compileResult = BCompileUtil.compile("test-src/lock/locks-in-functions.bal");
 
@@ -246,5 +254,33 @@ public class LocksInMainTest {
                 8, 5);
         BAssertUtil.validateError(compileResult, 1, "undefined symbol 'val1'",
                 18, 9);
+    }
+
+    @Test(description = "Test for parallel run using locks")
+    public void testParallelRunUsingLocks() {
+        BValue[] returns = BRunUtil.invoke(parallelCompileResult, "runParallelUsingLocks");
+    }
+
+    @Test(description = "Test for parallel run when invocations have global variable dependencies")
+    public void testParallelRunWithInvocationDependencies() {
+        BValue[] returns = BRunUtil.invoke(parallelCompileResult, "testLockWithInvokableAccessingGlobal");
+    }
+
+    @Test(description = "Test for parallel run when invocations have loops and global var dependencies")
+    public void testParallelRunWithChainedInvocationDependencies() {
+        BValue[] returns = BRunUtil.invoke(parallelCompileResult, "testLockWIthInvokableChainsAccessingGlobal");
+    }
+
+    @Test(description = "Test for parallel run when invocation are recursive and have global var dependencies")
+    public void testParallelRunWithRecursiveInvocationDependencies() {
+        BValue[] returns = BRunUtil.invoke(parallelCompileResult, "testLockWIthInvokableRecursiveAccessGlobal");
+    }
+
+    @Test(description = "Test for parallel run when invocations are imported and contains global var dependencies")
+    public void testParallelRunWithImportInvocationDependencies() {
+        CompileResult importInvocationDependencies = BCompileUtil.compile("test-src/lock/locks-in-imports-test",
+                "mod1", true);
+
+        BRunUtil.invoke(importInvocationDependencies, "testLockWIthInvokableChainsAccessingGlobal");
     }
 }

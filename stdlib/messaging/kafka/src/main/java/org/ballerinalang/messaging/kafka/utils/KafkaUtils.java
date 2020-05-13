@@ -18,9 +18,6 @@
 
 package org.ballerinalang.messaging.kafka.utils;
 
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -29,13 +26,13 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.config.SslConfigs;
 import org.ballerinalang.jvm.BRuntime;
 import org.ballerinalang.jvm.BallerinaValues;
 import org.ballerinalang.jvm.StringUtils;
 import org.ballerinalang.jvm.types.BArrayType;
 import org.ballerinalang.jvm.types.BTypes;
-import org.ballerinalang.jvm.util.exceptions.BLangRuntimeException;
 import org.ballerinalang.jvm.values.MapValue;
 import org.ballerinalang.jvm.values.ObjectValue;
 import org.ballerinalang.jvm.values.api.BArray;
@@ -53,6 +50,7 @@ import java.util.Objects;
 import java.util.Properties;
 
 import static org.ballerinalang.jvm.BallerinaValues.createRecord;
+import static org.ballerinalang.messaging.kafka.utils.AvroUtils.handleAvroConsumer;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.ALIAS_CONCURRENT_CONSUMERS;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.ALIAS_DECOUPLE_PROCESSING;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.ALIAS_OFFSET;
@@ -61,6 +59,8 @@ import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.ALIAS_POLLI
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.ALIAS_POLLING_TIMEOUT;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.ALIAS_TOPIC;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.ALIAS_TOPICS;
+import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.AUTHENTICATION_CONFIGURATION;
+import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.AUTHENTICATION_MECHANISM;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.BALLERINA_STRAND;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.CONSUMER_CONFIG_FIELD_NAME;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.CONSUMER_ERROR;
@@ -69,16 +69,21 @@ import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.CONSUMER_KE
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.CONSUMER_VALUE_DESERIALIZER_CONFIG;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.CONSUMER_VALUE_DESERIALIZER_TYPE_CONFIG;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.KEYSTORE_CONFIG;
+import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.PASSWORD;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.PRODUCER_KEY_SERIALIZER_CONFIG;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.PRODUCER_KEY_SERIALIZER_TYPE_CONFIG;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.PRODUCER_VALUE_SERIALIZER_CONFIG;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.PRODUCER_VALUE_SERIALIZER_TYPE_CONFIG;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.PROPERTIES_ARRAY;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.PROTOCOL_CONFIG;
+import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.SASL_PLAIN;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.SECURE_SOCKET;
+import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.SECURITY_PROTOCOL_CONFIG;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.SERDES_AVRO;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.SERDES_CUSTOM;
 import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.TRUSTSTORE_CONFIG;
+import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.UNCHECKED;
+import static org.ballerinalang.messaging.kafka.utils.KafkaConstants.USERNAME;
 
 /**
  * Utility class for Kafka Connector Implementation.
@@ -212,11 +217,14 @@ public class KafkaUtils {
         addBooleanParamIfPresent(ALIAS_DECOUPLE_PROCESSING, configurations, properties,
                                  ALIAS_DECOUPLE_PROCESSING, false);
         if (Objects.nonNull(configurations.get(SECURE_SOCKET))) {
-            processSSLProperties(configurations, properties);
+            processSslProperties(configurations, properties);
         }
         if (SERDES_AVRO.equals(configurations.get(CONSUMER_VALUE_DESERIALIZER_CONFIG)) ||
                 SERDES_AVRO.equals(configurations.get(CONSUMER_VALUE_DESERIALIZER_CONFIG))) {
             properties.put(KafkaConstants.SPECIFIC_AVRO_READER, false);
+        }
+        if (Objects.nonNull(configurations.get(AUTHENTICATION_CONFIGURATION))) {
+            processSaslProperties(configurations, properties);
         }
         return properties;
     }
@@ -291,13 +299,16 @@ public class KafkaUtils {
         addBooleanParamIfPresent(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, configurations,
                                  properties, KafkaConstants.PRODUCER_ENABLE_IDEMPOTENCE_CONFIG);
         if (Objects.nonNull(configurations.get(SECURE_SOCKET))) {
-            processSSLProperties(configurations, properties);
+            processSslProperties(configurations, properties);
+        }
+        if (Objects.nonNull(configurations.get(AUTHENTICATION_CONFIGURATION))) {
+            processSaslProperties(configurations, properties);
         }
         return properties;
     }
 
     @SuppressWarnings(KafkaConstants.UNCHECKED)
-    private static void processSSLProperties(MapValue<String, Object> configurations, Properties configParams) {
+    private static void processSslProperties(MapValue<String, Object> configurations, Properties configParams) {
         MapValue<String, Object> secureSocket = (MapValue<String, Object>) configurations.get(SECURE_SOCKET);
         addStringParamIfPresent(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG,
                                 (MapValue<String, Object>) secureSocket.get(KEYSTORE_CONFIG), configParams,
@@ -325,7 +336,7 @@ public class KafkaUtils {
                                 KafkaConstants.TRUSTMANAGER_ALGORITHM_CONFIG);
         addStringParamIfPresent(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
                                 (MapValue<String, Object>) secureSocket.get(PROTOCOL_CONFIG), configParams,
-                                KafkaConstants.SECURITY_PROTOCOL_CONFIG);
+                                SECURITY_PROTOCOL_CONFIG);
         addStringParamIfPresent(SslConfigs.SSL_PROTOCOL_CONFIG,
                                 (MapValue<String, Object>) secureSocket.get(PROTOCOL_CONFIG), configParams,
                                 KafkaConstants.SSL_PROTOCOL_CONFIG);
@@ -342,6 +353,25 @@ public class KafkaUtils {
                                 KafkaConstants.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG);
         addStringParamIfPresent(SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG, configurations, configParams,
                                 KafkaConstants.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG);
+    }
+
+    @SuppressWarnings(UNCHECKED)
+    private static void processSaslProperties(MapValue<String, Object> configurations, Properties properties) {
+        MapValue<String, Object> authenticationConfig =
+                (MapValue<String, Object>) configurations.getMapValue(AUTHENTICATION_CONFIGURATION);
+        String mechanism = authenticationConfig.getStringValue(AUTHENTICATION_MECHANISM);
+        if (SASL_PLAIN.equals(mechanism)) {
+            String username = authenticationConfig.getStringValue(USERNAME);
+            String password = authenticationConfig.getStringValue(PASSWORD);
+            String jaasConfigValue =
+                    "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"" + username +
+                            "\" password=\"" + password + "\";";
+            addStringParamIfPresent(SaslConfigs.SASL_MECHANISM, authenticationConfig, properties,
+                                    AUTHENTICATION_MECHANISM);
+            addStringParamIfPresent(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, authenticationConfig, properties,
+                                    SECURITY_PROTOCOL_CONFIG);
+            properties.put(SaslConfigs.SASL_JAAS_CONFIG, jaasConfigValue);
+        }
     }
 
     private static void addSerializerTypeConfigs(String paramName, MapValue<String, Object> configs,
@@ -521,10 +551,6 @@ public class KafkaUtils {
 
     public static MapValue<String, Object> populateConsumerRecord(ConsumerRecord record, String keyType,
                                                                   String valueType) {
-        if (Objects.isNull(record)) {
-            return null;
-        }
-
         Object key = null;
         if (Objects.nonNull(record.key())) {
             key = getBValues(record.key(), keyType);
@@ -540,7 +566,7 @@ public class KafkaUtils {
             if (value instanceof byte[]) {
                 return BValueCreator.createArrayValue((byte[]) value);
             } else {
-                throw new BLangRuntimeException("Invalid type - expected: byte[]");
+                throw createKafkaError(CONSUMER_ERROR, "Invalid type - expected: byte[]");
             }
         } else if (KafkaConstants.SERDES_STRING.equals(type)) {
             if (value instanceof String) {
@@ -548,43 +574,26 @@ public class KafkaUtils {
                 return value;
                 // return StringUtils.fromString((String) value);
             } else {
-                throw new BLangRuntimeException("Invalid type - expected: string");
+                throw createKafkaError(CONSUMER_ERROR, "Invalid type - expected: string");
             }
         } else if (KafkaConstants.SERDES_INT.equals(type)) {
             if (value instanceof Long) {
                 return value;
             } else {
-                throw new BLangRuntimeException("Invalid type - expected: int");
+                throw createKafkaError(CONSUMER_ERROR, "Invalid type - expected: int");
             }
         } else if (KafkaConstants.SERDES_FLOAT.equals(type)) {
             if (value instanceof Double) {
                 return value;
             } else {
-                throw new BLangRuntimeException("Invalid type - expected: float");
+                throw createKafkaError(CONSUMER_ERROR, "Invalid type - expected: float");
             }
         } else if (SERDES_AVRO.equals(type)) {
-            if (value instanceof GenericRecord) {
-                MapValue<String, Object> genericAvroRecord = getAvroGenericRecord();
-                populateBallerinaGenericAvroRecord(genericAvroRecord, (GenericRecord) value);
-                return genericAvroRecord;
-            }
+            return handleAvroConsumer(value);
         } else if (SERDES_CUSTOM.equals(type)) {
             return value;
         }
         throw createKafkaError("Unexpected type found for consumer record", CONSUMER_ERROR);
-    }
-
-    private static void populateBallerinaGenericAvroRecord(MapValue genericAvroRecord, GenericRecord record) {
-        List<Schema.Field> fields = record.getSchema().getFields();
-        for (Schema.Field field : fields) {
-            if (record.get(field.name()) instanceof Utf8) {
-                genericAvroRecord.put(field.name(), record.get(field.name()).toString());
-            } else if (record.get(field.name()) instanceof GenericRecord) {
-                populateBallerinaGenericAvroRecord(genericAvroRecord, (GenericRecord) record.get(field.name()));
-            } else {
-                genericAvroRecord.put(field.name(), record.get(field.name()));
-            }
-        }
     }
 
     public static MapValue<String, Object> getConsumerRecord() {

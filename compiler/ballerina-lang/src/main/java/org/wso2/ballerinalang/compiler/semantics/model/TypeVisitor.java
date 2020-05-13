@@ -47,10 +47,11 @@ import org.wso2.ballerinalang.compiler.semantics.model.types.BXMLType;
 
 /**
  * Visit ballerina types and maps them to instances T.
- * 
+ *
  * @since 0.995.0
  */
 public interface TypeVisitor {
+
     void visit(BAnnotationType bAnnotationType);
 
     void visit(BArrayType bArrayType);
@@ -71,8 +72,6 @@ public interface TypeVisitor {
 
     void visit(BMapType bMapType);
 
-    void visit(BTableType bTableType);
-
     void visit(BStreamType bStreamType);
 
     void visit(BTypedescType bTypedescType);
@@ -92,6 +91,8 @@ public interface TypeVisitor {
     void visit(BUnionType bUnionType);
 
     void visit(BXMLType bxmlType);
+
+    void visit(BTableType bTableType);
 
     void visit(BRecordType bRecordType);
 

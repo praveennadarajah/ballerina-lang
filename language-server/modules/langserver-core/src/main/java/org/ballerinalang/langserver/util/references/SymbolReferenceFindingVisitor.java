@@ -44,6 +44,7 @@ import org.wso2.ballerinalang.compiler.tree.BLangSimpleVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangTupleVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangTypeDefinition;
 import org.wso2.ballerinalang.compiler.tree.BLangXMLNS;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangDoClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangFromClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangLetClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangSelectClause;
@@ -66,6 +67,7 @@ import org.wso2.ballerinalang.compiler.tree.expressions.BLangLetExpression;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangListConstructorExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangLiteral;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangNamedArgsExpression;
+import org.wso2.ballerinalang.compiler.tree.expressions.BLangQueryAction;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangQueryExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangRecordLiteral;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangRecordVarRef;
@@ -896,6 +898,19 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
     }
 
     @Override
+    public void visit(BLangQueryAction queryAction) {
+        queryAction.fromClauseList.forEach(this::acceptNode);
+        queryAction.whereClauseList.forEach(this::acceptNode);
+        queryAction.getLetClauseNode().forEach(this::acceptNode);
+        this.acceptNode(queryAction.doClause);
+    }
+
+    @Override
+    public void visit(BLangDoClause doClause) {
+        this.acceptNode(doClause.body);
+    }
+
+    @Override
     public void visit(BLangFromClause fromClause) {
         this.acceptNode(fromClause.collection);
         this.acceptNode((BLangNode) fromClause.variableDefinitionNode);
@@ -928,6 +943,16 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
     public void visit(BLangStreamType streamType) {
         this.acceptNode(streamType.constraint);
         this.acceptNode(streamType.error);
+    }
+
+    @Override
+    public void visit(BLangInvocation.BLangActionInvocation actionInvocationExpr) {
+        if (actionInvocationExpr.name.getValue().equals(this.tokenName)) {
+            DiagnosticPos pos = actionInvocationExpr.name.getPosition();
+            this.addSymbol(actionInvocationExpr, actionInvocationExpr.symbol, false, pos);
+        }
+        this.acceptNode(actionInvocationExpr.expr);
+        actionInvocationExpr.argExprs.forEach(this::acceptNode);
     }
 
     protected void acceptNode(BLangNode node) {
