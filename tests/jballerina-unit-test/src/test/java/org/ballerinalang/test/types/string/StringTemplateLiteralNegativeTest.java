@@ -26,6 +26,7 @@ import org.testng.annotations.Test;
 /**
  * Test class for String Template Literal negative tests.
  */
+@Test(groups = { "brokenOnNewParser" })
 public class StringTemplateLiteralNegativeTest {
 
     private CompileResult resultNegative;
@@ -46,8 +47,8 @@ public class StringTemplateLiteralNegativeTest {
         resultNegative = BCompileUtil.compile("test-src/types/string/string-template-literal-syntax-negative.bal");
         Assert.assertEquals(resultNegative.getErrorCount(), 3);
         int index = 0;
-        BAssertUtil.validateError(resultNegative, index++, "mismatched input ';'. expecting {'is', '}', '?', " +
-                "'+', '-', '*', '/', '%', '==', '!=', '>', '<', '>=', '<=', '&&', '||', '===', '!==', '&', '^', " +
+        BAssertUtil.validateError(resultNegative, index++, "mismatched input ';'. expecting {'is', 'equals', '}', " +
+                "'?', '+', '-', '*', '/', '%', '==', '!=', '>', '<', '>=', '<=', '&&', '||', '===', '!==', '&', '^', " +
                 "'...', '|', '?:', '->>', '..<'}", 4, 75);
         BAssertUtil.validateError(resultNegative, index++, "token recognition error at: '\\l'", 10, 26);
         BAssertUtil.validateError(resultNegative, index, "extraneous input 'lo $ {name}}'", 10, 28);

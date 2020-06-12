@@ -32,7 +32,7 @@ function testObjectTypes() returns [typedesc<any>, typedesc<any>] {
 type Person object {
     public string name;
 
-    function __init(string name) {
+    function init(string name) {
         self.name = name;
     }
 
@@ -107,6 +107,80 @@ function testCustomErrorTypeDesc() {
     if (!(te is typedesc<FooError>)) {
         panic error("AssertionError", message = "expected typedesc<FooError> but found: " + te.toString());
     }
+}
+
+function testBasicTypesWithoutTypedescConstraint() {
+    typedesc a = int;
+    typedesc b = string;
+    typedesc c = float;
+    typedesc d = boolean;
+    typedesc e = byte;
+
+    assertEquality("typedesc int", a.toString());
+}
+
+function testRefTypesWithoutTypedescConstraint() {
+    typedesc a = json;
+    typedesc b = xml;
+
+    assertEquality("typedesc json", a.toString());
+}
+
+function testObjectTypesWithoutTypedescConstraint() {
+    typedesc a = Person;
+    typedesc b = object {
+        public string name = "";
+    };
+
+    assertEquality("typedesc Person", a.toString());
+}
+
+function testArrayTypesWithoutTypedescConstraint() {
+    typedesc a = int[];
+    typedesc b = int[][];
+
+    assertEquality("typedesc int[]", a.toString());
+}
+
+function testRecordTypesWithoutTypedescConstraint() {
+    typedesc a = RecordA;
+    typedesc b = record {string c; int d;};
+
+    assertEquality("typedesc RecordA", a.toString());
+}
+
+function testTuplesWithExpressionsWithoutTypedescConstraint() {
+    int[] fib = [1, 1, 2, 3, 5, 8];
+    typedesc desc = ["foo", 25, ["foo", "bar", "john"], utilFunc(), fib[4]];
+
+    assertEquality("typedesc [string,int,[string,string,string],string,int]", desc.toString());
+}
+
+function testAnyToTypedescWithoutConstraint() {
+    any a = int;
+    typedesc desc = <typedesc>a;
+
+    assertEquality("typedesc int", desc.toString());
+}
+
+typedesc glbTypeDescWithoutConstraint = json;
+
+function testModuleLevelTypeDescWithoutConstraint() {
+
+    assertEquality("typedesc json", glbTypeDescWithoutConstraint.toString());
+}
+
+function testMethodLevelTypeDescWithoutConstraint() {
+    typedesc methodLocalTypeDesc = json;
+
+    assertEquality("typedesc json", methodLocalTypeDesc.toString());
+}
+
+function testCustomErrorTypeDescWithoutConstraint() {
+    typedesc te = FooError;
+
+    assertEquality("typedesc FooError", te.toString());
+
 }
 
 type AssertionError error<ASSERTION_ERROR_REASON>;

@@ -66,6 +66,8 @@ class TypeEmitter {
                 return "any";
             case TypeTags.NIL:
                 return "()";
+            case TypeTags.NEVER:
+                return "never";
             case TypeTags.BYTE:
                 return "byte";
             case TypeTags.FLOAT:
@@ -195,7 +197,7 @@ class TypeEmitter {
         recordStr.append(emitSpaces(1));
         recordStr.append("{");
         recordStr.append(emitLBreaks(1));
-        for (BField bField : bType.fields) {
+        for (BField bField : bType.fields.values()) {
             if (bField != null) {
                 recordStr.append(emitTabs(tabs + 1));
                 String flags = emitFlags(bField.type.flags);
@@ -220,7 +222,7 @@ class TypeEmitter {
         str.append(emitSpaces(1));
         str.append("{");
         str.append(emitLBreaks(1));
-        for (BField bField : bType.fields) {
+        for (BField bField : bType.fields.values()) {
             if (bField != null) {
                 str.append(emitTabs(tabs + 1));
                 String flags = emitFlags(bField.type.flags);

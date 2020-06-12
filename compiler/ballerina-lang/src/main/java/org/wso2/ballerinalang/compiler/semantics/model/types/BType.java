@@ -31,6 +31,7 @@ import static org.wso2.ballerinalang.compiler.util.TypeTags.DECIMAL;
 import static org.wso2.ballerinalang.compiler.util.TypeTags.ERROR;
 import static org.wso2.ballerinalang.compiler.util.TypeTags.FLOAT;
 import static org.wso2.ballerinalang.compiler.util.TypeTags.INT;
+import static org.wso2.ballerinalang.compiler.util.TypeTags.NEVER;
 import static org.wso2.ballerinalang.compiler.util.TypeTags.NIL;
 import static org.wso2.ballerinalang.compiler.util.TypeTags.STRING;
 import static org.wso2.ballerinalang.compiler.util.TypeTags.TYPEDESC;
@@ -56,6 +57,13 @@ public class BType implements ValueType {
         this.tsymbol = tsymbol;
         this.name = Names.EMPTY;
         this.flags = 0;
+    }
+
+    public BType(int tag, BTypeSymbol tsymbol, int flags) {
+        this.tag = tag;
+        this.tsymbol = tsymbol;
+        this.name = Names.EMPTY;
+        this.flags = flags;
     }
 
     public BType(int tag, BTypeSymbol tsymbol, Name name, int flags) {
@@ -96,6 +104,8 @@ public class BType implements ValueType {
                 return TypeKind.TYPEDESC;
             case NIL:
                 return TypeKind.NIL;
+            case NEVER:
+                return TypeKind.NEVER;
             case ERROR:
                 return TypeKind.ERROR;
             default:

@@ -46,7 +46,10 @@ import org.wso2.ballerinalang.compiler.tree.BLangTypeDefinition;
 import org.wso2.ballerinalang.compiler.tree.BLangXMLNS;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangDoClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangFromClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangJoinClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangLetClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangOnClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangOnConflictClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangSelectClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangWhereClause;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangAnnotAccessExpr;
@@ -116,6 +119,7 @@ import org.wso2.ballerinalang.compiler.tree.types.BLangConstrainedType;
 import org.wso2.ballerinalang.compiler.tree.types.BLangErrorType;
 import org.wso2.ballerinalang.compiler.tree.types.BLangFiniteTypeNode;
 import org.wso2.ballerinalang.compiler.tree.types.BLangFunctionTypeNode;
+import org.wso2.ballerinalang.compiler.tree.types.BLangIntersectionTypeNode;
 import org.wso2.ballerinalang.compiler.tree.types.BLangObjectTypeNode;
 import org.wso2.ballerinalang.compiler.tree.types.BLangRecordTypeNode;
 import org.wso2.ballerinalang.compiler.tree.types.BLangStreamType;
@@ -245,7 +249,7 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
     public void visit(BLangFunction funcNode) {
         boolean isWorker = funcNode.flagSet.contains(Flag.WORKER);
         String funcName = isWorker ? funcNode.defaultWorkerName.value : funcNode.name.value;
-        if (funcName.equals(this.tokenName) || ("__init".equals(funcName) && "new".equals(this.tokenName))) {
+        if (funcName.equals(this.tokenName) || ("init".equals(funcName) && "new".equals(this.tokenName))) {
             /*
             If the go-to definition is triggered for the new keyword and there is an init function defined,
             then jump to the init function
@@ -343,11 +347,7 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
 
     @Override
     public void visit(BLangTransaction transactionNode) {
-        this.acceptNode(transactionNode.retryCount);
         this.acceptNode(transactionNode.transactionBody);
-        this.acceptNode(transactionNode.onRetryBody);
-        this.acceptNode(transactionNode.committedBody);
-        this.acceptNode(transactionNode.abortedBody);
     }
 
     @Override
@@ -594,6 +594,13 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
     @Override
     public void visit(BLangUnionTypeNode unionTypeNode) {
         unionTypeNode.getMemberTypeNodes().forEach(this::acceptNode);
+    }
+
+    @Override
+    public void visit(BLangIntersectionTypeNode intersectionTypeNode) {
+        for (BLangType constituentTypeNode : intersectionTypeNode.constituentTypeNodes) {
+            acceptNode(constituentTypeNode);
+        }
     }
 
     @Override
@@ -891,18 +898,12 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
 
     @Override
     public void visit(BLangQueryExpr queryExpr) {
-        queryExpr.fromClauseList.forEach(this::acceptNode);
-        queryExpr.letClausesList.forEach(this::acceptNode);
-        this.acceptNode(queryExpr.selectClause);
-        queryExpr.whereClauseList.forEach(this::acceptNode);
+        queryExpr.getQueryClauses().forEach(this::acceptNode);
     }
 
     @Override
     public void visit(BLangQueryAction queryAction) {
-        queryAction.fromClauseList.forEach(this::acceptNode);
-        queryAction.whereClauseList.forEach(this::acceptNode);
-        queryAction.getLetClauseNode().forEach(this::acceptNode);
-        this.acceptNode(queryAction.doClause);
+        queryAction.getQueryClauses().forEach(this::acceptNode);
     }
 
     @Override
@@ -917,6 +918,12 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
     }
 
     @Override
+    public void visit(BLangJoinClause joinClause) {
+        this.acceptNode(joinClause.collection);
+        this.acceptNode((BLangNode) joinClause.variableDefinitionNode);
+    }
+
+    @Override
     public void visit(BLangSelectClause selectClause) {
         this.acceptNode(selectClause.expression);
     }
@@ -924,6 +931,16 @@ public class SymbolReferenceFindingVisitor extends LSNodeVisitor {
     @Override
     public void visit(BLangWhereClause whereClause) {
         this.acceptNode(whereClause.expression);
+    }
+
+    @Override
+    public void visit(BLangOnClause onClause) {
+        this.acceptNode(onClause.expression);
+    }
+
+    @Override
+    public void visit(BLangOnConflictClause onConflictClause) {
+        this.acceptNode(onConflictClause.expression);
     }
 
     @Override

@@ -37,6 +37,7 @@ import org.wso2.ballerinalang.compiler.semantics.model.symbols.BAnnotationSymbol
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BAttachedFunction;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BErrorTypeSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BInvokableSymbol;
+import org.wso2.ballerinalang.compiler.semantics.model.symbols.BInvokableTypeSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BObjectTypeSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BOperatorSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BRecordTypeSymbol;
@@ -71,6 +72,7 @@ import org.wso2.ballerinalang.compiler.tree.BLangPackage;
 import org.wso2.ballerinalang.compiler.tree.BLangRecordVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangRecordVariable.BLangRecordVariableKeyValue;
 import org.wso2.ballerinalang.compiler.tree.BLangResource;
+import org.wso2.ballerinalang.compiler.tree.BLangRetrySpec;
 import org.wso2.ballerinalang.compiler.tree.BLangService;
 import org.wso2.ballerinalang.compiler.tree.BLangSimpleVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangTupleVariable;
@@ -98,7 +100,6 @@ import org.wso2.ballerinalang.compiler.tree.expressions.BLangTupleVarRef;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTypeConversionExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTypeInit;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangVariableReference;
-import org.wso2.ballerinalang.compiler.tree.statements.BLangAbort;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangAssignment;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangBlockStmt;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangBreak;
@@ -119,7 +120,9 @@ import org.wso2.ballerinalang.compiler.tree.statements.BLangPanic;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangRecordDestructure;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangRecordVariableDef;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangRetry;
+import org.wso2.ballerinalang.compiler.tree.statements.BLangRetryTransaction;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangReturn;
+import org.wso2.ballerinalang.compiler.tree.statements.BLangRollback;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangSimpleVariableDef;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangStatement;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangThrow;
@@ -150,6 +153,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -282,6 +286,8 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
 
     public void visit(BLangFunction funcNode) {
         SymbolEnv funcEnv = SymbolEnv.createFunctionEnv(funcNode, funcNode.symbol.scope, env);
+
+        // TODO: Shouldn't this be done in symbol enter?
         //set function param flag to final
         funcNode.symbol.params.forEach(param -> param.flags |= Flags.FUNCTION_FINAL);
 
@@ -310,6 +316,12 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
         for (BLangSimpleVariable param : funcNode.requiredParams) {
             symbolEnter.defineExistingVarSymbolInEnv(param.symbol, funcNode.clonedEnv);
             this.analyzeDef(param, funcNode.clonedEnv);
+
+            if (param.expr != null) {
+                funcNode.symbol.paramDefaultValTypes.put(param.symbol.name.value, param.expr.type);
+                ((BInvokableTypeSymbol) funcNode.type.tsymbol).paramDefaultValTypes.put(param.symbol.name.value,
+                                                                                        param.expr.type);
+            }
         }
         if (funcNode.restParam != null) {
             symbolEnter.defineExistingVarSymbolInEnv(funcNode.restParam.symbol, funcNode.clonedEnv);
@@ -474,6 +486,7 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
     public void visit(BLangRecordTypeNode recordTypeNode) {
         SymbolEnv recordEnv = SymbolEnv.createTypeEnv(recordTypeNode, recordTypeNode.symbol.scope, env);
         recordTypeNode.fields.forEach(field -> analyzeDef(field, recordEnv));
+        validateOptionalNeverTypedField(recordTypeNode);
         validateDefaultable(recordTypeNode);
         recordTypeNode.analyzed = true;
     }
@@ -1200,7 +1213,8 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
                             names.fromString(ANONYMOUS_RECORD_NAME), env.enclPkg.symbol.pkgID, null, env.scope.owner);
                     recordVarType = (BRecordType) symTable.recordType;
 
-                    List<BField> fields = populateAndGetPossibleFieldsForRecVar(recordVar, possibleTypes, recordSymbol);
+                    LinkedHashMap<String, BField> fields =
+                            populateAndGetPossibleFieldsForRecVar(recordVar, possibleTypes, recordSymbol);
 
                     if (recordVar.restParam != null) {
                         LinkedHashSet<BType> memberTypes = possibleTypes.stream()
@@ -1252,8 +1266,7 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
                 return false;
         }
 
-        Map<String, BField> recordVarTypeFields = recordVarType.fields.stream()
-                .collect(Collectors.toMap(field -> field.getName().getValue(), field -> field));
+        LinkedHashMap<String, BField> recordVarTypeFields = recordVarType.fields;
 
         boolean validRecord = true;
         int ignoredCount = 0;
@@ -1397,8 +1410,7 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
         }
 
         BRecordType recordType = (BRecordType) errorType.detailType;
-        Map<String, BField> detailFields =
-                recordType.fields.stream().collect(Collectors.toMap(f -> f.name.value, f -> f));
+        LinkedHashMap<String, BField> detailFields = recordType.fields;
         Set<String> matchedDetailFields = new HashSet<>();
         for (BLangErrorVariable.BLangErrorDetailEntry errorDetailEntry : errorVariable.detail) {
             String entryName = errorDetailEntry.key.getValue();
@@ -1512,28 +1524,28 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
      * @param recordSymbol symbol of the record type to be used in creating fields
      * @return the list of fields
      */
-    private List<BField> populateAndGetPossibleFieldsForRecVar(BLangRecordVariable recordVar, List<BType> possibleTypes,
-                                                               BRecordTypeSymbol recordSymbol) {
-        List<BField> fields = new ArrayList<>();
+    private LinkedHashMap<String, BField> populateAndGetPossibleFieldsForRecVar(BLangRecordVariable recordVar,
+                                                                                List<BType> possibleTypes,
+                                                                                BRecordTypeSymbol recordSymbol) {
+        LinkedHashMap<String, BField> fields = new LinkedHashMap<>();
         for (BLangRecordVariableKeyValue bLangRecordVariableKeyValue : recordVar.variableList) {
             String fieldName = bLangRecordVariableKeyValue.key.value;
             LinkedHashSet<BType> memberTypes = new LinkedHashSet<>();
             for (BType possibleType : possibleTypes) {
                 if (possibleType.tag == TypeTags.RECORD) {
                     BRecordType possibleRecordType = (BRecordType) possibleType;
-                    Optional<BField> optionalField = possibleRecordType.fields.stream()
-                            .filter(field -> field.getName().getValue().equals(fieldName))
-                            .findFirst();
-                    if (optionalField.isPresent()) {
-                        BField bField = optionalField.get();
-                        if (Symbols.isOptional(bField.symbol)) {
+
+                    if (possibleRecordType.fields.containsKey(fieldName)) {
+                        BField field = possibleRecordType.fields.get(fieldName);
+                        if (Symbols.isOptional(field.symbol)) {
                             memberTypes.add(symTable.nilType);
                         }
-                        memberTypes.add(bField.type);
+                        memberTypes.add(field.type);
                     } else {
                         memberTypes.add(possibleRecordType.restFieldType);
                         memberTypes.add(symTable.nilType);
                     }
+
                     continue;
                 }
                 if (possibleType.tag == TypeTags.MAP) {
@@ -1546,9 +1558,10 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
 
             BType fieldType = memberTypes.size() > 1 ?
                     BUnionType.create(null, memberTypes) : memberTypes.iterator().next();
-            fields.add(new BField(names.fromString(fieldName), recordVar.pos,
-                    new BVarSymbol(0, names.fromString(fieldName), env.enclPkg.symbol.pkgID,
-                            fieldType, recordSymbol)));
+            BField field = new BField(names.fromString(fieldName), recordVar.pos,
+                                      new BVarSymbol(0, names.fromString(fieldName), env.enclPkg.symbol.pkgID,
+                                                     fieldType, recordSymbol));
+            fields.put(field.name.value, field);
         }
         return fields;
     }
@@ -1564,11 +1577,14 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
         BRecordTypeSymbol recordSymbol = Symbols.createRecordSymbol(0, names.fromString(ANONYMOUS_RECORD_NAME),
                 env.enclPkg.symbol.pkgID, null, env.scope.owner);
         //TODO check below field position
-        List<BField> fields = recordVar.variableList.stream()
-                .map(bLangRecordVariableKeyValue -> bLangRecordVariableKeyValue.key.value)
-                .map(fieldName -> new BField(names.fromString(fieldName), recordVar.pos, new BVarSymbol(0,
-                        names.fromString(fieldName), env.enclPkg.symbol.pkgID, fieldType, recordSymbol)))
-                .collect(Collectors.toList());
+        LinkedHashMap<String, BField> fields = new LinkedHashMap<>();
+        for (BLangRecordVariableKeyValue bLangRecordVariableKeyValue : recordVar.variableList) {
+            String fieldName = bLangRecordVariableKeyValue.key.value;
+            BField bField = new BField(names.fromString(fieldName), recordVar.pos,
+                                       new BVarSymbol(0, names.fromString(fieldName), env.enclPkg.symbol.pkgID,
+                                                      fieldType, recordSymbol));
+            fields.put(fieldName, bField);
+        }
 
         BRecordType recordVarType = (BRecordType) symTable.recordType;
         recordVarType.fields = fields;
@@ -1591,12 +1607,7 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
             return false;
         }
         BRecordType recordVarType = (BRecordType) varType;
-        Map<String, BField> recordVarTypeFields = recordVarType.fields
-                .stream()
-                .collect(Collectors.toMap(
-                        field -> field.getName().getValue(),
-                        field -> field
-                ));
+        Map<String, BField> recordVarTypeFields = recordVarType.fields;
 
         for (BLangRecordVariableKeyValue var : variableList) {
             if (!recordVarTypeFields.containsKey(var.key.value) && recordVarType.sealed) {
@@ -1823,13 +1834,14 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
         BRecordType rhsRecordType = (BRecordType) rhsType;
 
         // check if all fields in record var ref are found in rhs record type
-        lhsVarRef.recordRefFields.stream()
-                .filter(lhsField -> rhsRecordType.fields.stream()
-                        .noneMatch(rhsField -> lhsField.variableName.value.equals(rhsField.name.toString())))
-                .forEach(lhsField -> dlog.error(pos, DiagnosticCode.INVALID_FIELD_IN_RECORD_BINDING_PATTERN,
-                        lhsField.variableName.value, rhsType));
+        for (BLangRecordVarRefKeyValue lhsField : lhsVarRef.recordRefFields) {
+            if (!rhsRecordType.fields.containsKey(lhsField.variableName.value)) {
+                dlog.error(pos, DiagnosticCode.INVALID_FIELD_IN_RECORD_BINDING_PATTERN,
+                           lhsField.variableName.value, rhsType);
+            }
+        }
 
-        for (BField rhsField : rhsRecordType.fields) {
+        for (BField rhsField : rhsRecordType.fields.values()) {
             List<BLangRecordVarRefKeyValue> expField = lhsVarRef.recordRefFields.stream()
                     .filter(field -> field.variableName.value.equals(rhsField.name.toString()))
                     .collect(Collectors.toList());
@@ -1885,22 +1897,33 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
     }
 
     private boolean hasOnlyAnydataTypedFields(BRecordType recordType) {
-        boolean allAnydataFields = recordType.fields.stream()
-                .map(field -> field.type)
-                .allMatch(fieldType -> fieldType.isAnydata());
-        return allAnydataFields && (recordType.sealed || recordType.restFieldType.isAnydata());
+        for (BField field : recordType.fields.values()) {
+            BType fieldType = field.type;
+            if (!fieldType.isAnydata()) {
+                return false;
+            }
+        }
+        return recordType.sealed || recordType.restFieldType.isAnydata();
     }
 
     private boolean hasOnlyPureTypedFields(BRecordType recordType) {
-        boolean allPureFields = recordType.fields.stream()
-                .map(field -> field.type)
-                .allMatch(fieldType -> fieldType.isPureType());
-        return allPureFields && (recordType.sealed || recordType.restFieldType.isPureType());
+        for (BField field : recordType.fields.values()) {
+            BType fieldType = field.type;
+            if (!fieldType.isPureType()) {
+                return false;
+            }
+        }
+        return recordType.sealed || recordType.restFieldType.isPureType();
     }
 
     private boolean hasErrorTypedField(BRecordType recordType) {
-        return hasErrorType(recordType.restFieldType) ||
-                recordType.fields.stream().map(field -> field.type).anyMatch(this::hasErrorType);
+        for (BField field : recordType.fields.values()) {
+            BType type = field.type;
+            if (hasErrorType(type)) {
+                return true;
+            }
+        }
+        return hasErrorType(recordType.restFieldType);
     }
 
     private boolean hasErrorType(BType type) {
@@ -2057,8 +2080,7 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
             return;
         }
         BRecordType rhsDetailType = (BRecordType) rhsErrorType.detailType;
-        Map<String, BField> fields = rhsDetailType.fields.stream()
-                .collect(Collectors.toMap(field -> field.name.value, field -> field));
+        Map<String, BField> fields = rhsDetailType.fields;
 
         BType wideType = interpolateWideType(rhsDetailType, lhsRef.detail);
         for (BLangNamedArgsExpression detailItem : lhsRef.detail) {
@@ -2101,7 +2123,7 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
         Set<String> extractedKeys = detailType.stream().map(detail -> detail.name.value).collect(Collectors.toSet());
 
         BUnionType wideType = BUnionType.create(null);
-        for (BField field : rhsDetailType.fields) {
+        for (BField field : rhsDetailType.fields.values()) {
             // avoid fields extracted from binding pattern
             if (!extractedKeys.contains(field.name.value)) {
                 wideType.add(field.type);
@@ -2175,7 +2197,7 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
         SymbolEnv stmtEnv = new SymbolEnv(exprStmtNode, this.env.scope);
         this.env.copyTo(stmtEnv);
         BType bType = typeChecker.checkExpr(exprStmtNode.expr, stmtEnv, symTable.noType);
-        if (bType != symTable.nilType && bType != symTable.semanticError) {
+        if (bType != symTable.nilType && bType != symTable.neverType && bType != symTable.semanticError) {
             dlog.error(exprStmtNode.pos, DiagnosticCode.ASSIGNMENT_REQUIRED);
         }
         validateWorkerAnnAttachments(exprStmtNode.expr);
@@ -2422,6 +2444,15 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
         }
     }
 
+    private void validateOptionalNeverTypedField(BLangRecordTypeNode recordTypeNode) {
+        // Never type is only allowed in an optional field in a record
+        for (BLangSimpleVariable field : recordTypeNode.fields) {
+            if (field.type.tag == TypeTags.NEVER && !field.flagSet.contains(Flag.OPTIONAL)) {
+                dlog.error(field.pos, DiagnosticCode.NEVER_TYPE_NOT_ALLOWED_FOR_REQUIRED_FIELDS, field.name.value);
+            }
+        }
+    }
+
     @Override
     public void visit(BLangResource resourceNode) {
     }
@@ -2446,32 +2477,43 @@ public class SemanticAnalyzer extends BLangNodeVisitor {
     public void visit(BLangTransaction transactionNode) {
         SymbolEnv transactionEnv = SymbolEnv.createTransactionEnv(transactionNode, env);
         analyzeStmt(transactionNode.transactionBody, transactionEnv);
-        if (transactionNode.onRetryBody != null) {
-            analyzeStmt(transactionNode.onRetryBody, transactionEnv);
-        }
+    }
 
-        if (transactionNode.committedBody != null) {
-            analyzeStmt(transactionNode.committedBody, transactionEnv);
-        }
-
-        if (transactionNode.abortedBody != null) {
-            analyzeStmt(transactionNode.abortedBody, transactionEnv);
-        }
-
-        if (transactionNode.retryCount != null) {
-            typeChecker.checkExpr(transactionNode.retryCount, transactionEnv, symTable.intType);
-            checkRetryStmtValidity(transactionNode.retryCount);
+    @Override
+    public void visit(BLangRollback rollbackNode) {
+        if (rollbackNode.expr != null) {
+            BType expectedType = BUnionType.create(null, symTable.errorType, symTable.nilType);
+            this.typeChecker.checkExpr(rollbackNode.expr, this.env, expectedType);
         }
     }
 
     @Override
-    public void visit(BLangAbort abortNode) {
-        /* ignore */
+    public void visit(BLangRetryTransaction retryTransaction) {
+        if (retryTransaction.retrySpec != null) {
+            retryTransaction.retrySpec.accept(this);
+        }
+
+        retryTransaction.transaction.accept(this);
     }
 
     @Override
     public void visit(BLangRetry retryNode) {
-        /* ignore */
+        if (retryNode.retrySpec != null) {
+            retryNode.retrySpec.accept(this);
+        }
+
+        analyzeStmt(retryNode.retryBody, env);
+    }
+
+    @Override
+    public void visit(BLangRetrySpec retrySpec) {
+        if (retrySpec.retryManagerType != null) {
+            retrySpec.type = symResolver.resolveTypeNode(retrySpec.retryManagerType, env);
+        }
+
+        if (retrySpec.argExprs != null) {
+            retrySpec.argExprs.forEach(arg -> this.typeChecker.checkExpr(arg, env));
+        }
     }
 
     private boolean isJoinResultType(BLangSimpleVariable var) {

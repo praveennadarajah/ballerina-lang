@@ -19,8 +19,6 @@ package org.wso2.ballerinalang.compiler.semantics.analyzer;
 
 import org.ballerinalang.compiler.CompilerOptionName;
 import org.ballerinalang.compiler.CompilerPhase;
-import org.ballerinalang.model.clauses.FromClauseNode;
-import org.ballerinalang.model.clauses.WhereClauseNode;
 import org.ballerinalang.model.elements.Flag;
 import org.ballerinalang.model.symbols.SymbolKind;
 import org.ballerinalang.model.tree.ActionNode;
@@ -36,6 +34,7 @@ import org.wso2.ballerinalang.compiler.semantics.model.SymbolTable;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BAnnotationSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BConstantSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BInvokableSymbol;
+import org.wso2.ballerinalang.compiler.semantics.model.symbols.BObjectTypeSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BPackageSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BTypeSymbol;
@@ -71,6 +70,7 @@ import org.wso2.ballerinalang.compiler.tree.BLangPackage;
 import org.wso2.ballerinalang.compiler.tree.BLangRecordVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangRecordVariable.BLangRecordVariableKeyValue;
 import org.wso2.ballerinalang.compiler.tree.BLangResource;
+import org.wso2.ballerinalang.compiler.tree.BLangRetrySpec;
 import org.wso2.ballerinalang.compiler.tree.BLangService;
 import org.wso2.ballerinalang.compiler.tree.BLangSimpleVariable;
 import org.wso2.ballerinalang.compiler.tree.BLangTupleVariable;
@@ -80,6 +80,11 @@ import org.wso2.ballerinalang.compiler.tree.BLangWorker;
 import org.wso2.ballerinalang.compiler.tree.BLangXMLNS;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangDoClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangFromClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangJoinClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangLetClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangLimitClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangOnClause;
+import org.wso2.ballerinalang.compiler.tree.clauses.BLangOnConflictClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangSelectClause;
 import org.wso2.ballerinalang.compiler.tree.clauses.BLangWhereClause;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangAnnotAccessExpr;
@@ -87,6 +92,7 @@ import org.wso2.ballerinalang.compiler.tree.expressions.BLangArrowFunction;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangBinaryExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangCheckPanickedExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangCheckedExpr;
+import org.wso2.ballerinalang.compiler.tree.expressions.BLangCommitExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangConstant;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangElvisExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangErrorVarRef;
@@ -114,6 +120,7 @@ import org.wso2.ballerinalang.compiler.tree.expressions.BLangStringTemplateLiter
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTableConstructorExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTableMultiKeyExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTernaryExpr;
+import org.wso2.ballerinalang.compiler.tree.expressions.BLangTransactionalExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTrapExpr;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTupleVarRef;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangTypeConversionExpr;
@@ -137,7 +144,6 @@ import org.wso2.ballerinalang.compiler.tree.expressions.BLangXMLProcInsLiteral;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangXMLQName;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangXMLQuotedString;
 import org.wso2.ballerinalang.compiler.tree.expressions.BLangXMLTextLiteral;
-import org.wso2.ballerinalang.compiler.tree.statements.BLangAbort;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangAssignment;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangBlockStmt;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangBreak;
@@ -159,7 +165,9 @@ import org.wso2.ballerinalang.compiler.tree.statements.BLangPanic;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangRecordDestructure;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangRecordVariableDef;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangRetry;
+import org.wso2.ballerinalang.compiler.tree.statements.BLangRetryTransaction;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangReturn;
+import org.wso2.ballerinalang.compiler.tree.statements.BLangRollback;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangSimpleVariableDef;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangStatement;
 import org.wso2.ballerinalang.compiler.tree.statements.BLangThrow;
@@ -176,6 +184,7 @@ import org.wso2.ballerinalang.compiler.tree.types.BLangConstrainedType;
 import org.wso2.ballerinalang.compiler.tree.types.BLangErrorType;
 import org.wso2.ballerinalang.compiler.tree.types.BLangFiniteTypeNode;
 import org.wso2.ballerinalang.compiler.tree.types.BLangFunctionTypeNode;
+import org.wso2.ballerinalang.compiler.tree.types.BLangIntersectionTypeNode;
 import org.wso2.ballerinalang.compiler.tree.types.BLangLetVariable;
 import org.wso2.ballerinalang.compiler.tree.types.BLangObjectTypeNode;
 import org.wso2.ballerinalang.compiler.tree.types.BLangRecordTypeNode;
@@ -207,6 +216,7 @@ import java.util.Stack;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.ballerinalang.util.BLangCompilerConstants.RETRY_MANAGER_OBJECT_SHOULD_RETRY_FUNC;
 import static org.wso2.ballerinalang.compiler.tree.BLangInvokableNode.DEFAULT_WORKER_NAME;
 import static org.wso2.ballerinalang.compiler.util.Constants.MAIN_FUNCTION_NAME;
 import static org.wso2.ballerinalang.compiler.util.Constants.WORKER_LAMBDA_VAR_PREFIX;
@@ -232,9 +242,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
     private int transactionCount;
     private boolean statementReturns;
     private boolean lastStatement;
-    private boolean withinRetryBlock;
     private boolean withinLockBlock;
-    private int workerCount;
     private SymbolTable symTable;
     private Types types;
     private BLangDiagnosticLogHelper dlog;
@@ -243,14 +251,20 @@ public class CodeAnalyzer extends BLangNodeVisitor {
     private Stack<Boolean> loopWithintransactionCheckStack = new Stack<>();
     private Stack<Boolean> returnWithintransactionCheckStack = new Stack<>();
     private Stack<Boolean> doneWithintransactionCheckStack = new Stack<>();
+    private Stack<Boolean> transactionalFuncCheckStack = new Stack<>();
+    private Stack<Boolean> returnWithinRetryCheckStack = new Stack<>();
     private BLangNode parent;
     private Names names;
     private SymbolEnv env;
     private final Stack<LinkedHashSet<BType>> returnTypes = new Stack<>();
-    private boolean withinAbortedBlock;
-    private boolean withinCommittedBlock;
     private boolean isJSONContext;
     private boolean enableExperimentalFeatures;
+    private int commitCount;
+    private int rollbackCount;
+    private boolean withinTransactionScope;
+    private boolean commitRollbackAllowed;
+    private int commitCountWithinBlock;
+    private int rollbackCountWithinBlock;
 
     public static CodeAnalyzer getInstance(CompilerContext context) {
         CodeAnalyzer codeGenerator = context.get(CODE_ANALYZER_KEY);
@@ -360,6 +374,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
         if (isLambda) {
             return;
         }
+        transactionalFuncCheckStack.push(funcNode.flagSet.contains(Flag.TRANSACTIONAL));
 
         validateParams(funcNode);
 
@@ -386,6 +401,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
             this.workerActionSystemStack.peek().endWorkerActionStateMachine();
         } finally {
             this.finalizeCurrentWorkerActionSystem();
+            transactionalFuncCheckStack.pop();
         }
         funcNode.annAttachments.forEach(annotationAttachment -> analyzeNode(annotationAttachment, env));
     }
@@ -416,10 +432,11 @@ public class CodeAnalyzer extends BLangNodeVisitor {
         if (funcNode.body != null) {
             analyzeNode(funcNode.body, invokableEnv);
 
-            boolean isNilableReturn = funcNode.symbol.type.getReturnType().isNullable();
+            boolean isNeverOrNilableReturn = funcNode.symbol.type.getReturnType().tag == TypeTags.NEVER ||
+                    funcNode.symbol.type.getReturnType().isNullable();
             // If the return signature is nil-able, an implicit return will be added in Desugar.
             // Hence this only checks for non-nil-able return signatures and uncertain return in the body.
-            if (!isNilableReturn && !this.statementReturns) {
+            if (!isNeverOrNilableReturn && !this.statementReturns) {
                 this.dlog.error(funcNode.pos, DiagnosticCode.INVOKABLE_MUST_RETURN,
                         funcNode.getKind().toString().toLowerCase());
             }
@@ -436,6 +453,9 @@ public class CodeAnalyzer extends BLangNodeVisitor {
 
     @Override
     public void visit(BLangBlockFunctionBody body) {
+        if (!transactionalFuncCheckStack.empty()) {
+            withinTransactionScope = transactionalFuncCheckStack.peek();
+        }
         final SymbolEnv blockEnv = SymbolEnv.createFuncBodyEnv(body, env);
         for (BLangStatement e : body.stmts) {
             analyzeNode(e, blockEnv);
@@ -473,15 +493,21 @@ public class CodeAnalyzer extends BLangNodeVisitor {
 
     @Override
     public void visit(BLangTransaction transactionNode) {
-
         checkExperimentalFeatureValidity(ExperimentalFeatures.TRANSACTIONS, transactionNode.pos);
         this.checkStatementExecutionValidity(transactionNode);
-        //Check whether transaction is within a handler function or retry block. This can check for single level only.
-        // We need data flow analysis to check for further levels.
-        if (!isValidTransactionBlock()) {
-            this.dlog.error(transactionNode.pos, DiagnosticCode.TRANSACTION_CANNOT_BE_USED_WITHIN_HANDLER);
+        //Check whether transaction statement occurred in a transactional scope
+        if (!transactionalFuncCheckStack.empty() && transactionalFuncCheckStack.peek()) {
+            this.dlog.error(transactionNode.pos, DiagnosticCode.TRANSACTION_CANNOT_BE_USED_WITHIN_TRANSACTIONAL_SCOPE);
             return;
         }
+        boolean previousWithinTxScope = this.withinTransactionScope;
+        int previousCommitCount = this.commitCount;
+        int previousRollbackCount = this.rollbackCount;
+        boolean prevCommitRollbackAllowed = this.commitRollbackAllowed;
+        this.commitRollbackAllowed = true;
+        this.commitCount = 0;
+        this.rollbackCount = 0;
+        this.withinTransactionScope = true;
         this.loopWithintransactionCheckStack.push(false);
         this.returnWithintransactionCheckStack.push(false);
         this.doneWithintransactionCheckStack.push(false);
@@ -490,54 +516,91 @@ public class CodeAnalyzer extends BLangNodeVisitor {
             this.dlog.error(transactionNode.pos, DiagnosticCode.NESTED_TRANSACTIONS_ARE_INVALID);
         }
         analyzeNode(transactionNode.transactionBody, env);
+        if (commitCount < 1) {
+            this.dlog.error(transactionNode.pos, DiagnosticCode.INVALID_COMMIT_COUNT);
+        }
         this.transactionCount--;
+        this.withinTransactionScope = previousWithinTxScope;
+        this.commitCount = previousCommitCount;
+        this.rollbackCount = previousRollbackCount;
+        this.commitRollbackAllowed = prevCommitRollbackAllowed;
         this.resetLastStatement();
-        if (transactionNode.onRetryBody != null) {
-            this.withinRetryBlock = true;
-            analyzeNode(transactionNode.onRetryBody, env);
-            this.resetStatementReturns();
-            this.resetLastStatement();
-            this.withinRetryBlock = false;
-        }
-
-        if (transactionNode.abortedBody != null) {
-            this.withinAbortedBlock = true;
-            analyzeNode(transactionNode.abortedBody, env);
-            this.resetStatementReturns();
-            this.resetLastStatement();
-            this.withinAbortedBlock = false;
-        }
-
-        if (transactionNode.committedBody != null) {
-            this.withinCommittedBlock = true;
-            analyzeNode(transactionNode.committedBody, env);
-            this.resetStatementReturns();
-            this.resetLastStatement();
-            this.withinCommittedBlock = false;
-        }
 
         this.returnWithintransactionCheckStack.pop();
         this.loopWithintransactionCheckStack.pop();
         this.doneWithintransactionCheckStack.pop();
-        analyzeExpr(transactionNode.retryCount);
     }
 
     @Override
-    public void visit(BLangAbort abortNode) {
+    public void visit(BLangTransactionalExpr transactionalExpr) {
+
+    }
+
+    @Override
+    public void visit(BLangCommitExpr commitExpr) {
+        this.commitCount++;
+        this.commitCountWithinBlock++;
         if (this.transactionCount == 0) {
-            this.dlog.error(abortNode.pos, DiagnosticCode.ABORT_CANNOT_BE_OUTSIDE_TRANSACTION_BLOCK);
+            this.dlog.error(commitExpr.pos, DiagnosticCode.COMMIT_CANNOT_BE_OUTSIDE_TRANSACTION_BLOCK);
             return;
         }
-        this.lastStatement = true;
+        if (!this.transactionalFuncCheckStack.empty() && this.transactionalFuncCheckStack.peek()) {
+            this.dlog.error(commitExpr.pos, DiagnosticCode.COMMIT_CANNOT_BE_WITHIN_TRANSACTIONAL_FUNCTION);
+            return;
+        }
+        if (!withinTransactionScope || !commitRollbackAllowed) {
+            this.dlog.error(commitExpr.pos, DiagnosticCode.COMMIT_NOT_ALLOWED);
+            return;
+        }
+        withinTransactionScope = false;
+    }
+
+    @Override
+    public void visit(BLangRollback rollbackNode) {
+        rollbackCount++;
+        this.rollbackCountWithinBlock++;
+        if (this.transactionCount == 0 && !withinTransactionScope) {
+            this.dlog.error(rollbackNode.pos, DiagnosticCode.ROLLBACK_CANNOT_BE_OUTSIDE_TRANSACTION_BLOCK);
+            return;
+        }
+        if (!this.transactionalFuncCheckStack.empty() && this.transactionalFuncCheckStack.peek()) {
+            this.dlog.error(rollbackNode.pos, DiagnosticCode.ROLLBACK_CANNOT_BE_WITHIN_TRANSACTIONAL_FUNCTION);
+            return;
+        }
+        if (!withinTransactionScope || !commitRollbackAllowed) {
+            this.dlog.error(rollbackNode.pos, DiagnosticCode.ROLLBACK_NOT_ALLOWED);
+            return;
+        }
+        this.withinTransactionScope = false;
+        analyzeExpr(rollbackNode.expr);
     }
 
     @Override
     public void visit(BLangRetry retryNode) {
-        if (this.transactionCount == 0) {
-            this.dlog.error(retryNode.pos, DiagnosticCode.RETRY_CANNOT_BE_OUTSIDE_TRANSACTION_BLOCK);
-            return;
+        this.returnWithinRetryCheckStack.push(false);
+        retryNode.retrySpec.accept(this);
+        retryNode.retryBody.accept(this);
+        retryNode.retryBodyReturns = this.returnWithinRetryCheckStack.peek();
+        this.returnWithinRetryCheckStack.pop();
+    }
+
+    @Override
+    public void visit(BLangRetrySpec retrySpec) {
+        if (retrySpec.retryManagerType != null) {
+            BTypeSymbol retryManagerTypeSymbol = (BObjectTypeSymbol) symTable.langInternalModuleSymbol
+                    .scope.lookup(names.fromString("RetryManager")).symbol;
+            BType abstractRetryManagerType = retryManagerTypeSymbol.type;
+            if (!types.isAssignable(retrySpec.retryManagerType.type, abstractRetryManagerType)) {
+                dlog.error(retrySpec.pos, DiagnosticCode.INVALID_INTERFACE_ON_NON_ABSTRACT_OBJECT,
+                        RETRY_MANAGER_OBJECT_SHOULD_RETRY_FUNC, retrySpec.retryManagerType.type);
+            }
         }
-        this.lastStatement = true;
+    }
+
+    @Override
+    public void visit(BLangRetryTransaction retryTransaction) {
+        analyzeNode(retryTransaction.retrySpec, env);
+        analyzeNode(retryTransaction.transaction, env);
     }
 
     private void checkUnreachableCode(BLangStatement stmt) {
@@ -557,8 +620,19 @@ public class CodeAnalyzer extends BLangNodeVisitor {
 
     @Override
     public void visit(BLangBlockStmt blockNode) {
+        int prevCommitCount = this.commitCountWithinBlock;
+        int prevRollbackCount = this.rollbackCountWithinBlock;
+        this.commitCountWithinBlock = 0;
+        this.rollbackCountWithinBlock = 0;
         final SymbolEnv blockEnv = SymbolEnv.createBlockEnv(blockNode, env);
-        blockNode.stmts.forEach(e -> analyzeNode(e, blockEnv));
+        blockNode.stmts.forEach(e -> {
+            analyzeNode(e, blockEnv);
+        });
+        if (commitCountWithinBlock > 1 || rollbackCountWithinBlock > 1) {
+            this.dlog.error(blockNode.pos, DiagnosticCode.MAX_ONE_COMMIT_ROLLBACK_ALLOWED_WITHIN_A_BRANCH);
+        }
+        this.commitCountWithinBlock = prevCommitCount;
+        this.rollbackCountWithinBlock = prevRollbackCount;
         this.resetLastStatement();
     }
 
@@ -570,6 +644,10 @@ public class CodeAnalyzer extends BLangNodeVisitor {
             this.dlog.error(returnStmt.pos, DiagnosticCode.RETURN_CANNOT_BE_USED_TO_EXIT_TRANSACTION);
             return;
         }
+        if (!this.returnWithinRetryCheckStack.empty()) {
+            this.returnWithinRetryCheckStack.pop();
+            this.returnWithinRetryCheckStack.push(true);
+        }
         this.statementReturns = true;
         analyzeExpr(returnStmt.expr);
         this.returnTypes.peek().add(returnStmt.expr.type);
@@ -577,12 +655,33 @@ public class CodeAnalyzer extends BLangNodeVisitor {
 
     @Override
     public void visit(BLangIf ifStmt) {
+        boolean independentBlocks = false;
+        int prevCommitCount = commitCount;
+        int prevRollbackCount = rollbackCount;
         this.checkStatementExecutionValidity(ifStmt);
+        if (withinTransactionScope && ifStmt.elseStmt != null && ifStmt.elseStmt.getKind() != NodeKind.IF) {
+                independentBlocks = true;
+                commitRollbackAllowed = true;
+        }
+        boolean prevTxMode = this.withinTransactionScope;
+        if (ifStmt.expr.getKind() == NodeKind.TRANSACTIONAL_EXPRESSION) {
+            this.withinTransactionScope = true;
+        }
         analyzeNode(ifStmt.body, env);
+        if (ifStmt.expr.getKind() == NodeKind.TRANSACTIONAL_EXPRESSION) {
+            this.withinTransactionScope = prevTxMode;
+        }
         boolean ifStmtReturns = this.statementReturns;
         this.resetStatementReturns();
         if (ifStmt.elseStmt != null) {
+            if (independentBlocks) {
+                commitRollbackAllowed = true;
+                withinTransactionScope = true;
+            }
             analyzeNode(ifStmt.elseStmt, env);
+            if ((prevCommitCount != commitCount) || prevRollbackCount != rollbackCount) {
+                commitRollbackAllowed = false;
+            }
             this.statementReturns = ifStmtReturns && this.statementReturns;
         }
         analyzeExpr(ifStmt.expr);
@@ -1149,12 +1248,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
                     // if match type is record, the fields must match to the static pattern fields
                     BLangRecordLiteral mapLiteral = (BLangRecordLiteral) literal;
                     BRecordType recordMatchType = (BRecordType) matchType;
-                    Map<String, BType> recordFields = recordMatchType.fields
-                            .stream()
-                            .collect(Collectors.toMap(
-                                    field -> field.getName().getValue(),
-                                    BField::getType
-                            ));
+                    Map<String, BField> recordFields = recordMatchType.fields;
 
                     for (RecordLiteralNode.RecordField field : mapLiteral.fields) {
                         BLangRecordKeyValueField literalKeyValue = (BLangRecordKeyValueField) field;
@@ -1170,7 +1264,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
 
                         if (recordFields.containsKey(literalKeyName)) {
                             if (!isValidStaticMatchPattern(
-                                    recordFields.get(literalKeyName), literalKeyValue.valueExpr)) {
+                                    recordFields.get(literalKeyName).type, literalKeyValue.valueExpr)) {
                                 return false;
                             }
                         } else if (recordMatchType.sealed ||
@@ -1309,7 +1403,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
             case TypeTags.RECORD:
                 if (Symbols.isFlagOn(symbol.flags, Flags.ANONYMOUS)) {
                     BRecordType recordType = (BRecordType) symbol.type;
-                    recordType.fields.forEach(f -> checkForExportableType(f.type.tsymbol, pos));
+                    recordType.fields.values().forEach(f -> checkForExportableType(f.type.tsymbol, pos));
                     if (recordType.restFieldType != null) {
                         checkForExportableType(recordType.restFieldType.tsymbol, pos);
                     }
@@ -1908,7 +2002,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
                     continue;
                 }
 
-                for (BField bField : ((BRecordType) spreadOpExpr.type).fields) {
+                for (BField bField : ((BRecordType) spreadOpExpr.type).fields.values()) {
                     if (Symbols.isOptional(bField.symbol)) {
                         continue;
                     }
@@ -1941,8 +2035,7 @@ public class CodeAnalyzer extends BLangNodeVisitor {
                                         recordLiteral.expectedType.getKind().typeName(), name);
                     }
 
-                    if (isOpenRecord && ((BRecordType) type).fields.stream()
-                            .noneMatch(recField -> name.equals(recField.name.value))) {
+                    if (isOpenRecord && !((BRecordType) type).fields.containsKey(name)) {
                         dlog.error(keyExpr.pos, DiagnosticCode.INVALID_RECORD_LITERAL_IDENTIFIER_KEY, name);
                     }
 
@@ -2013,13 +2106,29 @@ public class CodeAnalyzer extends BLangNodeVisitor {
 
         if ((invocationExpr.symbol != null) && invocationExpr.symbol.kind == SymbolKind.FUNCTION) {
             BSymbol funcSymbol = invocationExpr.symbol;
+            if (Symbols.isFlagOn(funcSymbol.flags, Flags.TRANSACTIONAL) && !withinTransactionScope) {
+                dlog.error(invocationExpr.pos, DiagnosticCode.TRANSACTIONAL_FUNC_INVOKE_PROHIBITED, invocationExpr);
+                return;
+            }
             if (Symbols.isFlagOn(funcSymbol.flags, Flags.DEPRECATED)) {
                 dlog.warning(invocationExpr.pos, DiagnosticCode.USAGE_OF_DEPRECATED_CONSTRUCT, invocationExpr);
+            }
+
+            if (((BInvokableSymbol) funcSymbol).getReturnType().tag == TypeTags.NEVER &&
+                    invocationExpr.parent.getKind() != NodeKind.EXPRESSION_STATEMENT) {
+                // Log an error if the function returns never and invoked invalidly.
+                dlog.error(invocationExpr.pos, DiagnosticCode.INVALID_NEVER_RETURN_TYPED_FUNCTION_INVOCATION,
+                        funcSymbol.name);
             }
         }
     }
 
     public void visit(BLangInvocation.BLangActionInvocation actionInvocation) {
+        if (actionInvocation.async && this.withinTransactionScope) {
+            dlog.error(actionInvocation.pos, DiagnosticCode.USAGE_OF_START_WITHIN_TRANSACTION_IS_PROHIBITED);
+            return;
+        }
+
         analyzeExpr(actionInvocation.expr);
         analyzeExprs(actionInvocation.requiredArgs);
         analyzeExprs(actionInvocation.restArgs);
@@ -2028,6 +2137,12 @@ public class CodeAnalyzer extends BLangNodeVisitor {
                 Symbols.isFlagOn(actionInvocation.symbol.flags, Flags.DEPRECATED)) {
             dlog.warning(actionInvocation.pos, DiagnosticCode.USAGE_OF_DEPRECATED_CONSTRUCT, actionInvocation);
         }
+
+        if (actionInvocation.flagSet.contains(Flag.TRANSACTIONAL) && !withinTransactionScope) {
+            dlog.error(actionInvocation.pos, DiagnosticCode.TRANSACTIONAL_FUNC_INVOKE_PROHIBITED);
+            return;
+        }
+
 
         if (actionInvocation.async && this.withinLockBlock) {
             dlog.error(actionInvocation.pos, actionInvocation.functionPointerInvocation ?
@@ -2450,6 +2565,13 @@ public class CodeAnalyzer extends BLangNodeVisitor {
         unionTypeNode.memberTypeNodes.forEach(memberType -> analyzeTypeNode(memberType, env));
     }
 
+    public void visit(BLangIntersectionTypeNode intersectionTypeNode) {
+
+        for (BLangType constituentTypeNode : intersectionTypeNode.constituentTypeNodes) {
+            analyzeTypeNode(constituentTypeNode, env);
+        }
+    }
+
     public void visit(BLangFunctionTypeNode functionTypeNode) {
 
         functionTypeNode.params.forEach(node -> analyzeNode(node, env));
@@ -2493,11 +2615,6 @@ public class CodeAnalyzer extends BLangNodeVisitor {
             dlog.error(checkedExpr.pos, DiagnosticCode.CHECKED_EXPR_NO_MATCHING_ERROR_RETURN_IN_ENCL_INVOKABLE);
         }
 
-        if (checkReturnValidityInTransaction()) {
-            this.dlog.error(checkedExpr.pos, DiagnosticCode.CHECK_EXPRESSION_INVALID_USAGE_WITHIN_TRANSACTION_BLOCK);
-            return;
-        }
-
         returnTypes.peek().add(exprType);
     }
 
@@ -2513,43 +2630,37 @@ public class CodeAnalyzer extends BLangNodeVisitor {
     @Override
     public void visit(BLangQueryExpr queryExpr) {
         int fromCount = 0;
-        for (FromClauseNode fromClauseNode : queryExpr.fromClauseList) {
-            fromCount++;
-            BLangExpression collection = (BLangExpression) fromClauseNode.getCollection();
-            if (fromCount > 1) {
-                if (TypeTags.STREAM == collection.type.tag) {
-                    this.dlog.error(collection.pos, DiagnosticCode.NOT_ALLOWED_STREAM_USAGE_WITH_FROM);
+        for (BLangNode clause : queryExpr.getQueryClauses()) {
+            if (clause.getKind() == NodeKind.FROM) {
+                fromCount++;
+                BLangFromClause fromClause = (BLangFromClause) clause;
+                BLangExpression collection = (BLangExpression) fromClause.getCollection();
+                if (fromCount > 1) {
+                    if (TypeTags.STREAM == collection.type.tag) {
+                        this.dlog.error(collection.pos, DiagnosticCode.NOT_ALLOWED_STREAM_USAGE_WITH_FROM);
+                    }
                 }
             }
-            analyzeNode((BLangFromClause) fromClauseNode, env);
+            analyzeNode(clause, env);
         }
-
-        for (WhereClauseNode whereClauseNode : queryExpr.whereClauseList) {
-            analyzeNode((BLangWhereClause) whereClauseNode, env);
-        }
-
-        analyzeNode(queryExpr.selectClause, env);
     }
 
     @Override
     public void visit(BLangQueryAction queryAction) {
         int fromCount = 0;
-        for (FromClauseNode fromClauseNode : queryAction.fromClauseList) {
-            fromCount++;
-            BLangExpression collection = (BLangExpression) fromClauseNode.getCollection();
-            if (fromCount > 1) {
-                if (TypeTags.STREAM == collection.type.tag) {
-                    this.dlog.error(collection.pos, DiagnosticCode.NOT_ALLOWED_STREAM_USAGE_WITH_FROM);
+        for (BLangNode clause : queryAction.getQueryClauses()) {
+            if (clause.getKind() == NodeKind.FROM) {
+                fromCount++;
+                BLangFromClause fromClause = (BLangFromClause) clause;
+                BLangExpression collection = (BLangExpression) fromClause.getCollection();
+                if (fromCount > 1) {
+                    if (TypeTags.STREAM == collection.type.tag) {
+                        this.dlog.error(collection.pos, DiagnosticCode.NOT_ALLOWED_STREAM_USAGE_WITH_FROM);
+                    }
                 }
             }
-            analyzeNode((BLangFromClause) fromClauseNode, env);
+            analyzeNode(clause, env);
         }
-
-        for (WhereClauseNode whereClauseNode : queryAction.whereClauseList) {
-            analyzeNode((BLangWhereClause) whereClauseNode, env);
-        }
-
-        analyzeNode(queryAction.doClause, env);
         validateActionParentNode(queryAction.pos, queryAction);
     }
 
@@ -2559,8 +2670,25 @@ public class CodeAnalyzer extends BLangNodeVisitor {
     }
 
     @Override
+    public void visit(BLangJoinClause joinClause) {
+        analyzeExpr(joinClause.collection);
+    }
+
+    @Override
+    public void visit(BLangLetClause letClause) {
+        for (BLangLetVariable letVariable : letClause.letVarDeclarations) {
+            analyzeNode((BLangNode) letVariable.definitionNode, env);
+        }
+    }
+
+    @Override
     public void visit(BLangWhereClause whereClause) {
         analyzeExpr(whereClause.expression);
+    }
+
+    @Override
+    public void visit(BLangOnClause onClause) {
+        analyzeExpr(onClause.expression);
     }
 
     @Override
@@ -2569,8 +2697,18 @@ public class CodeAnalyzer extends BLangNodeVisitor {
     }
 
     @Override
+    public void visit(BLangOnConflictClause onConflictClause) {
+        analyzeExpr(onConflictClause.expression);
+    }
+
+    @Override
     public void visit(BLangDoClause doClause) {
         analyzeNode(doClause.body, env);
+    }
+
+    @Override
+    public void visit(BLangLimitClause limitClause) {
+        analyzeExpr(limitClause.expression);
     }
 
     @Override
@@ -2833,16 +2971,12 @@ public class CodeAnalyzer extends BLangNodeVisitor {
     }
 
     private boolean checkNextBreakValidityInTransaction() {
-        return !this.loopWithintransactionCheckStack.peek() && transactionCount > 0;
+        return !this.loopWithintransactionCheckStack.peek() && transactionCount > 0 && withinTransactionScope;
     }
 
     private boolean checkReturnValidityInTransaction() {
         return (this.returnWithintransactionCheckStack.empty() || !this.returnWithintransactionCheckStack.peek())
-                && transactionCount > 0;
-    }
-
-    private boolean isValidTransactionBlock() {
-        return !(this.withinRetryBlock || this.withinAbortedBlock || this.withinCommittedBlock);
+                && transactionCount > 0 && withinTransactionScope;
     }
 
     private void validateMainFunction(BLangFunction funcNode) {

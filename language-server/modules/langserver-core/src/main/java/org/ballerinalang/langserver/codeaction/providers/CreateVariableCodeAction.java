@@ -153,7 +153,7 @@ public class CreateVariableCodeAction extends AbstractCodeActionProvider {
             if (refAtCursor.getbLangNode() instanceof BLangInvocation) {
                 hasDefaultInitFunction = symbolAtCursor instanceof BObjectTypeSymbol;
                 hasCustomInitFunction = symbolAtCursor instanceof BInvokableSymbol &&
-                        symbolAtCursor.name.value.endsWith("__init");
+                        symbolAtCursor.name.value.endsWith("init");
                 isAsync = ((BLangInvocation) refAtCursor.getbLangNode()).isAsync();
             }
             boolean isInitInvocation = hasDefaultInitFunction || hasCustomInitFunction;
@@ -403,7 +403,7 @@ public class CreateVariableCodeAction extends AbstractCodeActionProvider {
                 }
             } else if (bLangNode instanceof BLangQueryExpr) {
                 BLangQueryExpr queryExpr = (BLangQueryExpr) bLangNode;
-                ExpressionNode expression = queryExpr.selectClause.getExpression();
+                ExpressionNode expression = queryExpr.getSelectClause().getExpression();
                 if (expression instanceof BLangRecordLiteral) {
                     BLangRecordLiteral recordLiteral = (BLangRecordLiteral) expression;
                     return getPossibleTypesAndNames(context, referenceAtCursor, hasDefaultInitFunction,

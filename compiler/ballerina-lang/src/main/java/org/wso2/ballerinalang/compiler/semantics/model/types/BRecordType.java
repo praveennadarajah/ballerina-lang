@@ -23,8 +23,8 @@ import org.wso2.ballerinalang.compiler.semantics.model.TypeVisitor;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.BTypeSymbol;
 import org.wso2.ballerinalang.compiler.semantics.model.symbols.Symbols;
 import org.wso2.ballerinalang.compiler.util.TypeTags;
+import org.wso2.ballerinalang.util.Flags;
 
-import java.util.ArrayList;
 import java.util.Optional;
 
 /**
@@ -48,9 +48,15 @@ public class BRecordType extends BStructureType implements RecordType {
     private Optional<Boolean> isAnyData = Optional.empty();
     private boolean resolving = false;
 
+    public BIntersectionType immutableType;
+    public BRecordType mutableType;
+
     public BRecordType(BTypeSymbol tSymbol) {
         super(TypeTags.RECORD, tSymbol);
-        this.fields = new ArrayList<>();
+    }
+
+    public BRecordType(BTypeSymbol tSymbol, int flags) {
+        super(TypeTags.RECORD, tSymbol, flags);
     }
 
     @Override
@@ -75,16 +81,17 @@ public class BRecordType extends BStructureType implements RecordType {
             // Try to print possible shape. But this may fail with self reference hence avoid .
             StringBuilder sb = new StringBuilder();
             sb.append(RECORD).append(SPACE).append(CLOSE_LEFT);
-            for (BField field : fields) {
+            for (BField field : fields.values()) {
                 sb.append(SPACE).append(field.type).append(SPACE).append(field.name)
                         .append(Symbols.isOptional(field.symbol) ? OPTIONAL : EMPTY).append(SEMI);
             }
             if (sealed) {
                 sb.append(SPACE).append(CLOSE_RIGHT);
-                return sb.toString();
+                return !Symbols.isFlagOn(this.flags, Flags.READONLY) ? sb.toString() :
+                        sb.toString().concat(" & readonly");
             }
             sb.append(SPACE).append(restFieldType).append(REST).append(SEMI).append(SPACE).append(CLOSE_RIGHT);
-            return sb.toString();
+            return !Symbols.isFlagOn(this.flags, Flags.READONLY) ? sb.toString() : sb.toString().concat(" & readonly");
         }
         return this.tsymbol.toString();
     }
@@ -104,12 +111,17 @@ public class BRecordType extends BStructureType implements RecordType {
     }
 
     private boolean findIsAnyData() {
-        for (BField field : this.fields) {
+        for (BField field : this.fields.values()) {
             if (!field.type.isPureType()) {
                 return false;
             }
         }
 
         return (this.sealed || this.restFieldType.isPureType());
+    }
+
+    @Override
+    public BIntersectionType getImmutableType() {
+        return this.immutableType;
     }
 }

@@ -685,7 +685,7 @@ public class CommonUtil {
         if (recordType.tsymbol.kind == SymbolKind.RECORD && recordType.tsymbol.name.value.contains("$anonType")) {
             StringBuilder recordTypeName = new StringBuilder("record {");
             recordTypeName.append(CommonUtil.LINE_SEPARATOR);
-            String fieldsList = recordType.fields.stream()
+            String fieldsList = recordType.fields.values().stream()
                     .map(field -> getBTypeName(field.type, ctx, doSimplify) + " " + field.name.getValue() + ";")
                     .collect(Collectors.joining(CommonUtil.LINE_SEPARATOR));
             recordTypeName.append(fieldsList).append(CommonUtil.LINE_SEPARATOR).append("}");
@@ -961,7 +961,7 @@ public class CommonUtil {
     public static Pair<String, String> getFunctionInvocationSignature(BInvokableSymbol symbol, String functionName,
                                                                       LSContext ctx) {
         if (symbol == null) {
-            // Symbol can be null for object init functions without an explicit __init
+            // Symbol can be null for object init functions without an explicit init
             return ImmutablePair.of(functionName + "();", functionName + "()");
         }
         StringBuilder signature = new StringBuilder(functionName + "(");
@@ -1003,7 +1003,7 @@ public class CommonUtil {
     }
 
     private static List<BField> getRecordRequiredFields(BRecordType recordType) {
-        return recordType.fields.stream()
+        return recordType.fields.values().stream()
                 .filter(field -> (field.symbol.flags & Flags.REQUIRED) == Flags.REQUIRED)
                 .collect(Collectors.toList());
     }

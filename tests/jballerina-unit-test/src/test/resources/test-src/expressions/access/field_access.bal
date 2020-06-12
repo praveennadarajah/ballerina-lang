@@ -14,6 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+const ASSERTION_ERROR_REASON = "AssertionError";
+
 type Employee record {
     string name;
     Employee? employer = ();
@@ -240,7 +242,7 @@ type Foo record {
 type Bar object {
     int i;
 
-    public function __init(int i) {
+    public function init(int i) {
         self.i = i;
     }
 };

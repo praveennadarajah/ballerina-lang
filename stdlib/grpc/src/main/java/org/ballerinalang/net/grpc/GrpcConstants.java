@@ -16,7 +16,9 @@
 package org.ballerinalang.net.grpc;
 
 import com.google.protobuf.DescriptorProtos;
+import org.ballerinalang.jvm.StringUtils;
 import org.ballerinalang.jvm.types.BPackage;
+import org.ballerinalang.jvm.values.api.BString;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -33,9 +35,12 @@ import static org.ballerinalang.jvm.util.BLangConstants.ORG_NAME_SEPARATOR;
 public class GrpcConstants {
     //gRPC package name.
     public static final String PROTOCOL_PACKAGE_GRPC = "grpc";
+    public static final String PROTOCOL_PACKAGE_VERSION_GRPC = "0.7.0";
     public static final String ORG_NAME = "ballerina";
-    public static final String PROTOCOL_STRUCT_PACKAGE_GRPC = ORG_NAME + ORG_NAME_SEPARATOR + "grpc";
-    public static final BPackage PROTOCOL_GRPC_PKG_ID = new BPackage(BALLERINA_BUILTIN_PKG_PREFIX, "grpc");
+    public static final String PROTOCOL_STRUCT_PACKAGE_GRPC = ORG_NAME + ORG_NAME_SEPARATOR +
+            "grpc:" + PROTOCOL_PACKAGE_VERSION_GRPC;
+    public static final BPackage PROTOCOL_GRPC_PKG_ID = new BPackage(BALLERINA_BUILTIN_PKG_PREFIX, "grpc",
+                                                                     PROTOCOL_PACKAGE_VERSION_GRPC);
 
     public static final String HTTPS_ENDPOINT_STARTED = "[ballerina/grpc] started HTTPS/WSS listener ";
     public static final String HTTP_ENDPOINT_STARTED = "[ballerina/grpc] started HTTP/WS listener ";
@@ -48,9 +53,14 @@ public class GrpcConstants {
     public static final String CONNECTOR_STARTED = "CONNECTOR_STARTED";
     public static final String LISTENER = "Listener";
     public static final String CALLER = "Caller";
+    public static final String CALLER_ENDPOINT_TYPE = PROTOCOL_STRUCT_PACKAGE_GRPC + ":" + CALLER;
     public static final String RESPONSE_OBSERVER = "RESPONSE_OBSERVER";
     public static final String RESPONSE_MESSAGE_DEFINITION = "RESPONSE_DEFINITION";
-    public static final String CALLER_ID = "instanceId";
+    public static final BString CALLER_ID = StringUtils.fromString("instanceId");
+    public static final String MESSAGE_QUEUE = "messageQueue";
+    public static final String COMPLETED_MESSAGE = "completedMessage";
+    public static final String ERROR_MESSAGE = "errorMessage";
+    public static final String ITERATOR_OBJECT_NAME = "StreamIterator";
 
     // Service Descriptor Annotation
     public static final String DESCRIPTOR_MAP = "getDescriptorMap";
@@ -59,7 +69,8 @@ public class GrpcConstants {
     public static final String ANN_RECORD_DESCRIPTOR_DATA = "ServiceDescriptorData";
     public static final String ANN_FIELD_DESCRIPTOR = "descriptor";
     public static final String ANN_FIELD_DESC_MAP = "descMap";
-    
+    public static final String ANN_SERVICE_DESCRIPTOR_FQN = PROTOCOL_STRUCT_PACKAGE_GRPC + ":" + ANN_SERVICE_DESCRIPTOR;
+
     //client side endpoint constants
     public static final String CLIENT_ENDPOINT_TYPE = "Client";
     public static final String CLIENT_CONNECTOR = "ClientConnector";
@@ -117,7 +128,6 @@ public class GrpcConstants {
     public static final String WRAPPER_BYTES_MESSAGE = "BytesValue";
 
     // Server Streaming method resources.
-    public static final String ON_OPEN_RESOURCE = "onOpen";
     public static final String ON_COMPLETE_RESOURCE = "onComplete";
     public static final String ON_MESSAGE_RESOURCE = "onMessage";
     public static final String ON_ERROR_RESOURCE = "onError";

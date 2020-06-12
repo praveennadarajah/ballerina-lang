@@ -40,6 +40,9 @@ public class BArrayType extends BType {
     private boolean hasFillerValue;
     private ArrayState state = ArrayState.UNSEALED;
 
+    private final boolean readonly;
+    private BIntersectionType immutableType;
+
     public BArrayType(BType elementType) {
         super(null, null, ArrayValue.class);
         this.elementType = elementType;
@@ -47,9 +50,14 @@ public class BArrayType extends BType {
             dimensions = ((BArrayType) elementType).getDimensions() + 1;
         }
         hasFillerValue = TypeChecker.hasFillerValue(this.elementType);
+        this.readonly = false;
     }
 
     public BArrayType(BType elemType, int size) {
+        this(elemType, size, false);
+    }
+
+    public BArrayType(BType elemType, int size, boolean readonly) {
         super(null, null, ArrayValue.class);
         this.elementType = elemType;
         if (elementType instanceof BArrayType) {
@@ -60,6 +68,7 @@ public class BArrayType extends BType {
             this.size = size;
         }
         hasFillerValue = TypeChecker.hasFillerValue(this.elementType);
+        this.readonly = readonly;
     }
 
     public BType getElementType() {
@@ -120,7 +129,7 @@ public class BArrayType extends BType {
             if (other.state == ArrayState.CLOSED_SEALED && this.size != other.size) {
                 return false;
             }
-            return this.elementType.equals(other.elementType);
+            return this.elementType.equals(other.elementType) && this.readonly == other.readonly;
         }
 
         return false;
@@ -137,9 +146,11 @@ public class BArrayType extends BType {
             tempElementType = arrayElement.elementType;
         }
         if (tempElementType.getTag() == TypeTags.UNION_TAG) {
-            return sb.insert(0, "(" + tempElementType.toString() + ")").toString();
+            sb.insert(0, "(" + tempElementType.toString() + ")").toString();
+        } else {
+            sb.insert(0, tempElementType.toString()).toString();
         }
-        return  sb.insert(0, tempElementType.toString()).toString();
+        return !readonly ? sb.toString() : sb.append(" & readonly").toString();
     }
 
     private String getSizeString() {
@@ -165,5 +176,20 @@ public class BArrayType extends BType {
     @Override
     public boolean isAnydata() {
         return this.elementType.isPureType();
+    }
+
+    @Override
+    public boolean isReadOnly() {
+        return this.readonly;
+    }
+
+    @Override
+    public BType getImmutableType() {
+        return this.immutableType;
+    }
+
+    @Override
+    public void setImmutableType(BIntersectionType immutableType) {
+        this.immutableType = immutableType;
     }
 }

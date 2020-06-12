@@ -21,6 +21,7 @@ import org.ballerinalang.compiler.BLangCompilerException;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
+import org.wso2.ballerinalang.compiler.bir.codegen.JvmConstants;
 import org.wso2.ballerinalang.compiler.bir.codegen.JvmErrorGen;
 import org.wso2.ballerinalang.compiler.bir.codegen.JvmInstructionGen;
 import org.wso2.ballerinalang.compiler.bir.codegen.JvmMethodGen;
@@ -38,10 +39,13 @@ import org.wso2.ballerinalang.compiler.bir.model.BIROperand;
 import org.wso2.ballerinalang.compiler.bir.model.BIRTerminator;
 import org.wso2.ballerinalang.compiler.bir.model.VarKind;
 import org.wso2.ballerinalang.compiler.semantics.model.SymbolTable;
+import org.wso2.ballerinalang.compiler.semantics.model.symbols.Symbols;
 import org.wso2.ballerinalang.compiler.semantics.model.types.BArrayType;
 import org.wso2.ballerinalang.compiler.semantics.model.types.BType;
 import org.wso2.ballerinalang.compiler.util.Name;
+import org.wso2.ballerinalang.compiler.util.ResolvedTypeBuilder;
 import org.wso2.ballerinalang.compiler.util.TypeTags;
+import org.wso2.ballerinalang.util.Flags;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -116,6 +120,8 @@ import static org.wso2.ballerinalang.compiler.bir.codegen.JvmPackageGen.getPacka
  */
 public class InteropMethodGen {
 
+    private static final ResolvedTypeBuilder typeBuilder = new ResolvedTypeBuilder();
+
     static void genJFieldForInteropField(JFieldFunctionWrapper jFieldFuncWrapper,
                                          ClassWriter classWriter,
                                          BIRPackage birModule,
@@ -123,7 +129,7 @@ public class InteropMethodGen {
                                          JvmMethodGen jvmMethodGen,
                                          LambdaMetadata lambdaGenMetadata) {
 
-        String currentPackageName = getPackageName(birModule.org.value, birModule.name.value);
+        String currentPackageName = getPackageName(birModule.org.value, birModule.name.value, birModule.version.value);
 
         // Create a local variable for the strand
         BIRVarToJVMIndexMap indexMap = new BIRVarToJVMIndexMap();
@@ -133,7 +139,13 @@ public class InteropMethodGen {
 
         // Generate method desc
         BIRFunction birFunc = jFieldFuncWrapper.func;
-        String desc = getMethodDesc(birFunc.type.paramTypes, birFunc.type.retType, null, false);
+        BType retType = birFunc.type.retType;
+
+        if (Symbols.isFlagOn(retType.flags, Flags.PARAMETERIZED)) {
+            retType = typeBuilder.build(birFunc.type.retType);
+        }
+
+        String desc = getMethodDesc(birFunc.type.paramTypes, retType, null, false);
         int access = ACC_PUBLIC + ACC_STATIC;
 
         MethodVisitor mv = classWriter.visitMethod(access, birFunc.name.value, desc, null, null);
@@ -245,7 +257,6 @@ public class InteropMethodGen {
         }
 
         // Handle return type
-        BType retType = birFunc.type.retType;
         BIRVariableDcl retVarDcl = new BIRVariableDcl(retType, new Name("$_ret_var_$"), null, VarKind.LOCAL);
         int returnVarRefIndex = indexMap.getIndex(retVarDcl);
 
@@ -284,6 +295,9 @@ public class InteropMethodGen {
                                     JvmMethodGen jvmMethodGen) {
         // resetting the variable generation index
         BType retType = birFunc.type.retType;
+        if (Symbols.isFlagOn(retType.flags, Flags.PARAMETERIZED)) {
+            retType = typeBuilder.build(birFunc.type.retType);
+        }
         JMethod jMethod = extFuncWrapper.jMethod;
         Class<?>[] jMethodParamTypes = jMethod.getParamTypes();
         JType jMethodRetType = JInterop.getJType(jMethod.getReturnType());
@@ -600,7 +614,8 @@ public class InteropMethodGen {
         if (TypeTags.isIntegerTypeTag(bElementType.tag)) {
             mv.visitMethodInsn(INVOKEINTERFACE, ARRAY_VALUE, "getInt", "(J)J", true);
         } else if (TypeTags.isStringTypeTag(bElementType.tag)) {
-            mv.visitMethodInsn(INVOKEINTERFACE, ARRAY_VALUE, "getString", String.format("(J)L%s;", STRING_VALUE), true);
+            mv.visitMethodInsn(INVOKEINTERFACE, ARRAY_VALUE, "getBString",
+                               String.format("(J)L%s;", JvmConstants.B_STRING_VALUE), true);
         } else if (bElementType.tag == TypeTags.BOOLEAN) {
             mv.visitMethodInsn(INVOKEINTERFACE, ARRAY_VALUE, "getBoolean", "(J)Z", true);
         } else if (bElementType.tag == TypeTags.BYTE) {

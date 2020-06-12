@@ -21,6 +21,7 @@ import ballerina/java;
 #
 # + bootstrapServers - List of remote server endpoints of kafka brokers
 # + groupId - Unique string that identifies the consumer
+# + topics - Topics to be subscribed by the consumer
 # + offsetReset - Offset reset strategy if no initial offset
 # + partitionAssignmentStrategy - Strategy class for handling the partition assignment among consumers
 # + metricsRecordingLevel - Metrics recording level
@@ -36,8 +37,9 @@ import ballerina/java;
 #                       `kafka:Deserializer` object
 # + schemaRegistryUrl - Avro schema registry url. Use this field to specify schema registry url, if Avro serializer
 #                       is used
-# + topics - Topics to be subscribed by the consumer
-# + properties - Additional properties if required
+# + properties - Additional properties for the property fields not provided by Ballerina Kafka module. Use this with
+#                caution since this can override any of the fields. It is not recomendded to use this field except
+#                in an extreme situation
 # + sessionTimeoutInMillis - Timeout used to detect consumer failures when heartbeat threshold is reached
 # + heartBeatIntervalInMillis - Expected time between heartbeats
 # + metadataMaxAgeInMillis - Maximum time to force a refresh of metadata
@@ -72,7 +74,8 @@ import ballerina/java;
 public type ConsumerConfiguration record {|
     string bootstrapServers;
     string groupId?;
-    string offsetReset?;
+    string[] topics?;
+    string offsetReset?; // TODO: Introduce a type instead of `string`.
     string partitionAssignmentStrategy?;
     string metricsRecordingLevel?;
     string metricsReporterClasses?;
@@ -86,8 +89,7 @@ public type ConsumerConfiguration record {|
     Deserializer valueDeserializer?;
     string schemaRegistryUrl?;
 
-    string[] topics?;
-    string[] properties?;
+    map<string> properties?; // TODO: This should be renamed to additionalProperties in future releases.
 
     int sessionTimeoutInMillis?;
     int heartBeatIntervalInMillis?;
@@ -156,7 +158,7 @@ public type IsolationLevel ISOLATION_COMMITTED|ISOLATION_UNCOMMITTED;
 public type Consumer client object {
     *'object:Listener;
 
-    public ConsumerConfiguration? consumerConfig = ();
+    public ConsumerConfiguration consumerConfig;
     private string keyDeserializerType;
     private string valueDeserializerType;
     private Deserializer? keyDeserializer = ();
@@ -165,7 +167,7 @@ public type Consumer client object {
     # Creates a new Kafka `Consumer`.
     #
     # + config - Configurations related to consumer endpoint
-    public function __init (ConsumerConfiguration config) {
+    public function init (ConsumerConfiguration config) {
         self.consumerConfig = config;
         self.keyDeserializerType = config.keyDeserializerType;
         self.valueDeserializerType = config.valueDeserializerType;
@@ -203,8 +205,12 @@ public type Consumer client object {
                             "provide 'schemaRegistryUrl' configuration in 'kafka:ConsumerConfiguration'.");
             }
         }
+        checkpanic self->connect();
 
-        checkpanic self.init(config);
+        string[]? topics = config?.topics;
+        if (topics is string[]){
+            checkpanic self->subscribe(topics);
+        }
     }
 
     # Starts the registered services.
@@ -242,16 +248,6 @@ public type Consumer client object {
     # + s - The service to be detached
     # + return - An `kafka:ConsumerError` if an error is encountered while detaching a service or else nil
     public function __detach(service s) returns error? {
-    }
-
-    function init(ConsumerConfiguration config) returns ConsumerError? {
-        checkpanic self->connect();
-
-        string[]? topics = config?.topics;
-        if (topics is string[]){
-            checkpanic self->subscribe(topics);
-        }
-        return;
     }
 
     # Assigns consumer to a set of topic partitions.
@@ -397,7 +393,7 @@ public type Consumer client object {
     # + return - Array of partitions for the given topic if executes successfully or else a `kafka:ConsumerError`
     public remote function getTopicPartitions(string topic, public int duration = -1)
     returns TopicPartition[]|ConsumerError {
-        return consumerGetTopicPartitions(self, java:fromString(topic), duration);
+        return consumerGetTopicPartitions(self, topic, duration);
     }
 
     # Pauses retrieving messages from a set of partitions.
@@ -459,7 +455,11 @@ public type Consumer client object {
     # + topics - Array of topics to be subscribed to
     # + return - A `kafka:ConsumerError` if an error is encountered or else '()'
     public remote function subscribe(string[] topics) returns ConsumerError? {
-        return consumerSubscribe(self, topics);
+        if (self.consumerConfig?.groupId is string) {
+            return consumerSubscribe(self, topics);
+        } else {
+            panic error(CONSUMER_ERROR, message = "The groupId of the consumer must be set to subscribe to the topics");
+        }
     }
 
     # Subscribes the consumer to the topics, which match the provided pattern.
@@ -470,7 +470,7 @@ public type Consumer client object {
     # + regex - Pattern, which should be matched with the topics to be subscribed to
     # + return - A `kafka:ConsumerError` if an error is encountered or else '()'
     public remote function subscribeToPattern(string regex) returns ConsumerError? {
-        return consumerSubscribeToPattern(self, java:fromString(regex));
+        return consumerSubscribeToPattern(self, regex);
     }
 
     # Subscribes to the provided set of topics with rebalance listening enabled.
@@ -560,7 +560,7 @@ function consumerGetPausedPartitions(Consumer consumer) returns TopicPartition[]
     class: "org.ballerinalang.messaging.kafka.nativeimpl.consumer.ConsumerInformationHandler"
 } external;
 
-function consumerGetTopicPartitions(Consumer consumer, handle topic, public int duration = -1)
+function consumerGetTopicPartitions(Consumer consumer, string topic, public int duration = -1)
 returns TopicPartition[]|ConsumerError =
 @java:Method {
     name: "getTopicPartitions",
@@ -631,7 +631,7 @@ function consumerSubscribe(Consumer consumer, string[] topics) returns ConsumerE
     class: "org.ballerinalang.messaging.kafka.nativeimpl.consumer.SubscriptionHandler"
 } external;
 
-function consumerSubscribeToPattern(Consumer consumer, handle regex) returns ConsumerError? =
+function consumerSubscribeToPattern(Consumer consumer, string regex) returns ConsumerError? =
 @java:Method {
     name: "subscribeToPattern",
     class: "org.ballerinalang.messaging.kafka.nativeimpl.consumer.SubscriptionHandler"

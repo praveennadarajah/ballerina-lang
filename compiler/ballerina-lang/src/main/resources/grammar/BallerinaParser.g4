@@ -44,6 +44,7 @@ definition
     |   annotationDefinition
     |   globalVariableDefinition
     |   constantDefinition
+    |   enumDefinition
     ;
 
 serviceDefinition
@@ -56,6 +57,10 @@ serviceBody
 
 blockFunctionBody
     :   LEFT_BRACE statement* (workerDeclaration+ statement*)? RIGHT_BRACE
+    ;
+
+blockStatement
+    :   LEFT_BRACE statement* RIGHT_BRACE
     ;
 
 externalFunctionBody
@@ -73,7 +78,7 @@ functionDefinitionBody
     ;
 
 functionDefinition
-    :   (PUBLIC | PRIVATE)? REMOTE? FUNCTION anyIdentifierName functionSignature functionDefinitionBody
+    :   (PUBLIC | PRIVATE)? REMOTE? TRANSACTIONAL? FUNCTION anyIdentifierName functionSignature functionDefinitionBody
     ;
 
 anonymousFunctionExpr
@@ -115,7 +120,8 @@ typeReference
     ;
 
 objectFieldDefinition
-    :   documentationString? annotationAttachment* (PUBLIC | PRIVATE)? typeName Identifier (ASSIGN expression)? SEMICOLON
+    :   documentationString? annotationAttachment* (PUBLIC | PRIVATE)? TYPE_READONLY? typeName Identifier
+            (ASSIGN expression)? SEMICOLON
     ;
 
 fieldDefinition
@@ -156,9 +162,18 @@ constantDefinition
     :   PUBLIC? CONST typeName? Identifier ASSIGN constantExpression SEMICOLON
     ;
 
+enumDefinition
+    :   documentationString? annotationAttachment* PUBLIC? ENUM Identifier LEFT_BRACE
+            (enumMember (COMMA enumMember)*)? RIGHT_BRACE
+    ;
+
+enumMember
+    :   documentationString? annotationAttachment* Identifier (ASSIGN constantExpression)?
+    ;
+
 globalVariableDefinition
     :   PUBLIC? LISTENER typeName? Identifier ASSIGN expression SEMICOLON
-    |   FINAL? (typeName | VAR) Identifier ASSIGN expression SEMICOLON
+    |   FINAL? (typeName | VAR) Identifier (ASSIGN expression)? SEMICOLON
     ;
 
 attachmentPoint
@@ -213,6 +228,7 @@ typeName
     :   simpleTypeName                                                                          # simpleTypeNameLabel
     |   typeName (LEFT_BRACKET (integerLiteral | MUL)? RIGHT_BRACKET)+                          # arrayTypeNameLabel
     |   typeName (PIPE typeName)+                                                               # unionTypeNameLabel
+    |   typeName BIT_AND typeName                                                               # intersectionTypeNameLabel
     |   typeName QUESTION_MARK                                                                  # nullableTypeNameLabel
     |   LEFT_PARENTHESIS typeName RIGHT_PARENTHESIS                                             # groupTypeNameLabel
     |   tupleTypeDescriptor                                                                     # tupleTypeNameLabel
@@ -248,6 +264,7 @@ simpleTypeName
     :   TYPE_ANY
     |   TYPE_ANYDATA
     |   TYPE_HANDLE
+    |   TYPE_NEVER
     |   TYPE_READONLY
     |   valueTypeName
     |   referenceTypeName
@@ -274,10 +291,10 @@ valueTypeName
 
 builtInReferenceTypeName
     :   TYPE_MAP LT typeName GT
-    |   TYPE_FUTURE LT typeName GT
+    |   TYPE_FUTURE (LT typeName GT)?
     |   TYPE_XML (LT typeName GT)?
     |   TYPE_JSON
-    |   TYPE_DESC LT typeName GT
+    |   TYPE_DESC (LT typeName GT)?
     |   SERVICE
     |   errorTypeName
     |   streamTypeName
@@ -356,10 +373,12 @@ statement
     |   workerSendAsyncStatement
     |   expressionStmt
     |   transactionStatement
-    |   abortStatement
+    |   rollbackStatement
     |   retryStatement
+    |   retryTransactionStatement
     |   lockStatement
     |   namespaceDeclarationStatement
+    |   blockStatement
     ;
 
 variableDefinitionStatement
@@ -751,51 +770,27 @@ expressionStmt
     ;
 
 transactionStatement
-    :   transactionClause onretryClause? committedAbortedClauses
+    :   TRANSACTION LEFT_BRACE statement* RIGHT_BRACE
     ;
 
-committedAbortedClauses
-    :   (committedClause? abortedClause?) | (abortedClause? committedClause?)
-    ;
-
-transactionClause
-    :   TRANSACTION (WITH transactionPropertyInitStatementList)? LEFT_BRACE statement* RIGHT_BRACE
-    ;
-
-transactionPropertyInitStatement
-    :   retriesStatement
-    ;
-
-transactionPropertyInitStatementList
-    :   transactionPropertyInitStatement (COMMA transactionPropertyInitStatement)*
+rollbackStatement
+    :   ROLLBACK expression? SEMICOLON
     ;
 
 lockStatement
     :   LOCK LEFT_BRACE statement* RIGHT_BRACE
     ;
 
-onretryClause
-    :   ONRETRY LEFT_BRACE statement* RIGHT_BRACE
-    ;
-
-committedClause
-    :   COMMITTED LEFT_BRACE statement* RIGHT_BRACE
-    ;
-
-abortedClause
-    :   ABORTED LEFT_BRACE statement* RIGHT_BRACE
-    ;
-
-abortStatement
-    :   ABORT SEMICOLON
+retrySpec
+    :   (LT typeName GT)?   (LEFT_PARENTHESIS invocationArgList? RIGHT_PARENTHESIS)?
     ;
 
 retryStatement
-    :   RETRY SEMICOLON
+    :   RETRY retrySpec LEFT_BRACE statement* RIGHT_BRACE
     ;
 
-retriesStatement
-    :   RETRIES ASSIGN expression
+retryTransactionStatement
+    :   RETRY retrySpec transactionStatement
     ;
 
 namespaceDeclarationStatement
@@ -828,6 +823,7 @@ expression
     |   expression (LT | GT | LT_EQUAL | GT_EQUAL) expression               # binaryCompareExpression
     |   expression IS typeName                                              # typeTestExpression
     |   expression (EQUAL | NOT_EQUAL) expression                           # binaryEqualExpression
+    |   expression JOIN_EQUALS expression                                   # binaryEqualsExpression
     |   expression (REF_EQUAL | REF_NOT_EQUAL) expression                   # binaryRefEqualExpression
     |   expression (BIT_AND | BIT_XOR | PIPE) expression                    # bitwiseExpression
     |   expression AND expression                                           # binaryAndExpression
@@ -846,6 +842,8 @@ expression
     |   queryExpr                                                           # queryExpression
     |   queryAction                                                         # queryActionExpression
     |   letExpr                                                             # letExpression
+    |   transactionalExpr                                                   # transactionalExpression
+    |   commitAction                                                        # commitActionExpression
     ;
 
 constantExpression
@@ -889,8 +887,28 @@ shiftExpression
 
 shiftExprPredicate : {_input.get(_input.index() -1).getType() != WS}? ;
 
+transactionalExpr
+    :   TRANSACTIONAL
+    ;
+
+commitAction
+    :   COMMIT
+    ;
+
+limitClause
+    :   LIMIT expression
+    ;
+
+onConflictClause
+    :   ON CONFLICT expression
+    ;
+
 selectClause
     :   SELECT expression
+    ;
+
+onClause
+    :   ON expression
     ;
 
 whereClause
@@ -899,6 +917,10 @@ whereClause
 
 letClause
     :   LET letVarDecl (COMMA letVarDecl)*
+    ;
+
+joinClause
+    :   (JOIN (typeName | VAR) bindingPattern | OUTER JOIN VAR bindingPattern) IN expression
     ;
 
 fromClause
@@ -910,15 +932,19 @@ doClause
     ;
 
 queryPipeline
-    :   fromClause (fromClause | letClause | whereClause)*
+    :   fromClause ((fromClause | letClause | whereClause)* | (joinClause onClause)?)
+    ;
+
+queryConstructType
+    :   TYPE_TABLE tableKeySpecifier | TYPE_STREAM
     ;
 
 queryExpr
-    :   queryPipeline selectClause
+    :   queryConstructType? queryPipeline selectClause onConflictClause? limitClause?
     ;
 
 queryAction
-    :   queryPipeline doClause
+    :   queryPipeline doClause limitClause?
     ;
 
 //reusable productions

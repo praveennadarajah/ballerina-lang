@@ -75,7 +75,9 @@ public enum RuntimeErrors {
     STRING_INDEX_OUT_OF_RANGE("string.index.out.of.range", "RUNTIME_0048"),
     INVALID_SUBSTRING_RANGE("invalid.substring.range", "RUNTIME_0049"),
     XML_SEQUENCE_INDEX_OUT_OF_RANGE("xml.index.out.of.range", "RUNTIME_0050"),
-    RECORD_INVALID_READONLY_FIELD_UPDATE("record.invalid.readonly.field.update", "RUNTIME_0051");
+    RECORD_INVALID_READONLY_FIELD_UPDATE("record.invalid.readonly.field.update", "RUNTIME_0051"),
+    INVALID_READONLY_VALUE_UPDATE("invalid.update.on.readonly.value", "RUNTIME_0052"),
+    OBJECT_INVALID_READONLY_FIELD_UPDATE("object.invalid.readonly.field.update", "RUNTIME_0053");
 
     private String errorMsgKey;
     private String errorCode;
